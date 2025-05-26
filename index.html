@@ -1,0 +1,32 @@
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MPV Remote Control</title>
+</head>
+<body>
+    <p>MPV is connected: {{.IsConnected}}</p>
+    <form action="/" method="POST">
+        <label for="command">
+            Command: 
+            <input type="text" name="command" value="{{.Command}}">
+        </label>
+        <button type="submit">Submit</button>
+    </form>
+
+    {{if .Response}}
+        <p>{{.Command}}</p>
+        <p>Response:</p>
+        <pre>{{.Response}}</pre>
+    {{end}}
+
+    <form action="/" method="POST">
+        <input type="hidden" name="command" value="[&quot;set_property&quot;, &quot;pause&quot;, true]">
+        <button type="submit">Pause</button>
+    </form>
+    
+    <form action="/" method="POST">
+        <input type="hidden" name="command" value="[&quot;set_property&quot;, &quot;pause&quot;, false]">
+        <button type="submit">Resume</button>
+    </form>
+</body>
