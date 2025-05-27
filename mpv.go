@@ -1,15 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
-	"syscall"
 
-	"github.com/miere43/mpv-web-go/internal/winapi"
+	"github.com/miere43/mpv-web-go/internal/pipe"
 )
 
 type mpvCommand struct {
@@ -27,19 +26,31 @@ type mpvResponse struct {
 }
 
 type MPV struct {
-	pipeHandle     syscall.Handle
-	m              sync.RWMutex
+	conn  *pipe.Conn
+	reads chan []byte
+
 	wg             *sync.WaitGroup
 	commands       chan *mpvCommand
 	done           chan struct{}
 	_nextRequestID atomic.Int32
+
+	responseBuffer []byte
 
 	waitingForResponse      map[int32]*mpvCommand
 	waitingForResponseMutex sync.Mutex
 }
 
 func NewMPV() *MPV {
+	reads := make(chan []byte)
+	conn, err := pipe.Dial("\\\\.\\pipe\\mpvsocket", reads)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to connect to MPV named pipe: %v", err))
+	}
+
 	return &MPV{
+		conn:  conn,
+		reads: reads,
+
 		wg:                 &sync.WaitGroup{},
 		commands:           make(chan *mpvCommand),
 		done:               make(chan struct{}),
@@ -47,64 +58,22 @@ func NewMPV() *MPV {
 	}
 }
 
-func (mpv *MPV) IsConnected() bool {
-	mpv.m.RLock()
-	defer mpv.m.RUnlock()
-
-	return mpv.isConnectedNoMutex()
-}
-
-func (mpv *MPV) isConnectedNoMutex() bool {
-	return mpv.pipeHandle != 0
-}
-
 func (mpv *MPV) Connect() error {
-	mpv.m.Lock()
-	defer mpv.m.Unlock()
-
-	if mpv.isConnectedNoMutex() {
-		return nil
-	}
-
-	pipeHandle, err := syscall.CreateFile(
-		utf16("\\\\.\\pipe\\mpvsocket"),
-		syscall.GENERIC_READ|syscall.GENERIC_WRITE,
-		0,
-		nil,
-		syscall.OPEN_EXISTING,
-		syscall.FILE_ATTRIBUTE_NORMAL|syscall.FILE_FLAG_OVERLAPPED,
-		0,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to connect to MPV named pipe: %w", err)
-	}
-
 	mpv.wg.Add(1)
-	go mpv.readFromPipe(mpv.wg, pipeHandle, mpv.done)
-	go mpv.writeToPipe(mpv.wg, pipeHandle, mpv.commands, mpv.done)
-
-	mpv.pipeHandle = pipeHandle
+	go mpv.readResponses()
 	return nil
 }
 
+func (mpv *MPV) IsConnected() bool {
+	return true
+}
+
 func (mpv *MPV) Disconnect() {
-	mpv.m.Lock()
-	defer mpv.m.Unlock()
-
-	if !mpv.isConnectedNoMutex() {
-		return
+	if err := mpv.conn.Close(); err != nil {
+		panic(fmt.Sprintf("failed to close MPV named pipe: %v", err))
 	}
-
-	mpv.done <- struct{}{}
+	close(mpv.reads)
 	mpv.wg.Wait()
-
-	fmt.Println("Closing MPV named pipe handle...")
-	if err := syscall.CloseHandle(mpv.pipeHandle); err != nil {
-		panic(fmt.Errorf("failed to close MPV named pipe handle: %w", err))
-	}
-
-	mpv.pipeHandle = 0
-	fmt.Println("Disconnected from MPV named pipe.")
 }
 
 func (mpv *MPV) registerWaitForResponse(cmd *mpvCommand) {
@@ -138,13 +107,6 @@ func (mpv *MPV) waitForResponse(cmd *mpvCommand) mpvResponse {
 }
 
 func (mpv *MPV) SendCommand(command []any, async bool) (mpvResponse, error) {
-	mpv.m.RLock()
-	defer mpv.m.RUnlock()
-
-	if !mpv.isConnectedNoMutex() {
-		return mpvResponse{}, errors.New("mpv disconnected")
-	}
-
 	cmd := &mpvCommand{
 		Command:       command,
 		RequestID:     mpv.nextRequestID(),
@@ -152,8 +114,19 @@ func (mpv *MPV) SendCommand(command []any, async bool) (mpvResponse, error) {
 		responseReady: make(chan mpvResponse),
 	}
 
+	cmdJSON, err := json.Marshal(cmd)
+	if err != nil {
+		return mpvResponse{}, fmt.Errorf("marshal command: %w", err)
+	}
+	cmdJSON = append(cmdJSON, '\n')
+
 	mpv.registerWaitForResponse(cmd)
-	mpv.commands <- cmd
+
+	if err := mpv.conn.Write(cmdJSON); err != nil {
+		// TODO: unregisterWaitForResponse(cmd)
+		return mpvResponse{}, fmt.Errorf("write command to MPV: %w", err)
+	}
+
 	response := mpv.waitForResponse(cmd)
 	if response.Error == "success" {
 		return response, nil
@@ -166,122 +139,38 @@ func (mpv *MPV) ObserveProperty(property string, id int) error {
 	return err
 }
 
-func (mpv *MPV) readFromPipe(wg *sync.WaitGroup, pipeHandle syscall.Handle, stop <-chan struct{}) {
-	defer wg.Done()
-
-	event, err := winapi.CreateEventW(0, false, false)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create event: %v", err))
+func (mpv *MPV) bufferRead(read []byte) []byte {
+	mpv.responseBuffer = append(mpv.responseBuffer, read...)
+	index := bytes.IndexByte(mpv.responseBuffer, '\n')
+	if index == -1 {
+		return nil // Not enough data to form a complete response
 	}
-	defer syscall.CloseHandle(event)
+	response := make([]byte, index)
+	copy(response, mpv.responseBuffer[:index])
+	mpv.responseBuffer = mpv.responseBuffer[index+1:] // Remove the processed part
+	return response
+}
 
-	overlapped := &syscall.Overlapped{
-		HEvent: event,
-	}
-	overlappedDone := make(chan bool)
+func (mpv *MPV) readResponses() {
+	defer mpv.wg.Done()
 
-	for {
-		// TODO: merge incomplete reads
-		var buffer [1024 * 8]byte
-		if err = syscall.ReadFile(pipeHandle, buffer[:], nil, overlapped); err != nil {
-			if !errors.Is(err, syscall.ERROR_IO_PENDING) {
-				panic(fmt.Sprintf("Failed to read from pipe: %v", err))
-			}
+	for read := range mpv.reads {
+		completeResponse := mpv.bufferRead(read)
+		if completeResponse == nil {
+			continue // Not enough data to form a complete response
 		}
-		fmt.Printf("Read operation initiated, waiting for completion...\n")
 
-		go func() {
-			bytesRead, err := winapi.GetOverlappedResult(pipeHandle, overlapped, true)
-			if err != nil {
-				if errors.Is(err, syscall.ERROR_BROKEN_PIPE) {
-					log.Printf("Pipe broken, stopping read loop: %v", err)
-					overlappedDone <- true
-					return
-				}
-			}
+		var response mpvResponse
+		if err := json.Unmarshal(completeResponse, &response); err != nil {
+			panic(fmt.Sprintf("unmarshal response: %v \"%v\"", err, string(read)))
+		}
 
-			responseJSON := make([]byte, int(bytesRead))
-			copy(responseJSON, buffer[:bytesRead])
-
-			fmt.Printf("Read operation completed, %d bytes read: %s\n", bytesRead, string(responseJSON))
-
-			var response mpvResponse
-			if err = json.Unmarshal(responseJSON, &response); err != nil {
-				panic(fmt.Sprintf("unmarshal response: %v", err))
-			}
-
-			if response.RequestID != 0 {
-				mpv.setResponse(response.RequestID, response)
-			}
-
-			overlappedDone <- false
-		}()
-
-		select {
-		case quit := <-overlappedDone:
-			if quit {
-				return
-			}
-		case <-stop:
-			return
+		if response.RequestID != 0 {
+			mpv.setResponse(response.RequestID, response)
 		}
 	}
 }
 
 func (mpv *MPV) nextRequestID() int32 {
 	return mpv._nextRequestID.Add(1)
-}
-
-func (mpv *MPV) writeToPipe(wg *sync.WaitGroup, pipeHandle syscall.Handle, commands <-chan *mpvCommand, stop <-chan struct{}) {
-	defer wg.Done()
-
-	event, err := winapi.CreateEventW(0, false, false)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create event: %v", err))
-	}
-	defer syscall.CloseHandle(event)
-
-	overlapped := &syscall.Overlapped{
-		HEvent: event,
-	}
-	overlappedDone := make(chan bool)
-
-	for {
-		select {
-		case command := <-commands:
-			commandJSON, err := json.Marshal(command)
-			if err != nil {
-				panic(fmt.Sprintf("marshal command: %v", err))
-			}
-			commandJSON = append(commandJSON, '\n')
-
-			if err = syscall.WriteFile(pipeHandle, commandJSON, nil, overlapped); err != nil {
-				panic(fmt.Sprintf("Failed to write to pipe: %v", err))
-			}
-
-			fmt.Printf("Write operation initiated, waiting for completion...\n")
-
-			var bytesWritten uint32
-			go func() {
-				bytesWritten, err = winapi.GetOverlappedResult(pipeHandle, overlapped, true)
-				if err != nil {
-					panic(fmt.Sprintf("Failed to get overlapped result: %v", err))
-				}
-				fmt.Printf("Write operation completed, %d bytes written\n", bytesWritten)
-				overlappedDone <- false
-			}()
-
-			select {
-			case quit := <-overlappedDone:
-				if quit {
-					return
-				}
-			case <-stop:
-				return
-			}
-
-		case <-stop:
-			return
-		}
-	}
 }
