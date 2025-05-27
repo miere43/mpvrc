@@ -93,14 +93,6 @@ func main() {
 		}
 	})
 
-	h.HandleFunc("POST /connect", func(w http.ResponseWriter, r *http.Request) {
-		if err := app.ConnectToMPV(); err != nil {
-			log.Printf("POST /connect: %v", err)
-		}
-
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-	})
-
 	h.HandleFunc("POST /command", func(w http.ResponseWriter, r *http.Request) {
 		commandJSON := r.FormValue("command")
 		var command []any
@@ -131,7 +123,7 @@ func main() {
 		signal.Notify(sig, os.Interrupt)
 		<-sig
 		fmt.Println("Shutting down HTTP server...")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
 		close(shutdownSSE)
 		if err := srv.Shutdown(ctx); err != nil {

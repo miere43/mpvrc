@@ -17,7 +17,7 @@
     <div x-data x-show="!$store.connected">
         MPV is not connected.
 
-        <form action="/connect" method="POST">
+        <form action="/" method="GET">
             <button type="submit">Connect</button>
         </form>
     </div>
@@ -48,6 +48,7 @@
     >+30s</button>
 
     <div>Current playback time: <span x-data x-text="$store.playbackTime"></span></div>
+    <div>Volume: <span x-data x-text="$store.volume"></span></div>
 
     <script>
         function applyEvent(data) {

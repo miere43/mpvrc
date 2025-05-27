@@ -47,7 +47,7 @@ type Conn struct {
 func Dial(events chan any) (*Conn, error) {
 	const pipeName = "\\\\.\\pipe\\mpvsocket"
 
-	reads := make(chan []byte, 16)
+	reads := make(chan []byte)
 	conn, err := pipe.Dial(pipeName, reads)
 	if err != nil {
 		return nil, err
@@ -137,12 +137,10 @@ func (mpv *Conn) SendCommand(command []any, async bool) (MpvResponse, error) {
 	return response, errors.New(response.Error)
 }
 
-func (mpv *Conn) ObserveProperties(properties ...string) {
-	for _, property := range properties {
-		_, err := mpv.SendCommand([]any{"observe_property", mpv.nextPropertyID.Add(1), property}, false)
-		if err != nil {
-			log.Printf("failed to observe property \"%v\": %v", property, err)
-		}
+func (mpv *Conn) ObserveProperty(property string) {
+	_, err := mpv.SendCommand([]any{"observe_property", mpv.nextPropertyID.Add(1), property}, false)
+	if err != nil {
+		log.Printf("failed to observe property \"%v\": %v", property, err)
 	}
 }
 
