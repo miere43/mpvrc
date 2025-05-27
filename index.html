@@ -31,9 +31,21 @@
     <button
         type="button"
         x-data
+        x-on:click="$store.command(['seek', -30, 'relative+exact'])"
+    >-30s</button>
+
+    <button
+        type="button"
+        x-data
         x-on:click="$store.command(['set_property', 'pause', !$store.pause])"
         x-text="$store.pause ? 'Resume' : 'Pause'"
     ></button>
+
+    <button
+        type="button"
+        x-data
+        x-on:click="$store.command(['seek', 30, 'relative+exact'])"
+    >+30s</button>
 
     <div>Current playback time: <span x-data x-text="$store.playbackTime"></span></div>
 
