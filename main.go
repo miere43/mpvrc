@@ -15,12 +15,6 @@ import (
 func main() {
 	app := NewApp()
 
-	// mpv := NewMPV()
-	// if err := mpv.Connect(); err != nil {
-	// 	panic(fmt.Sprintf("Failed to connect to MPV: %v", err))
-	// }
-	// fmt.Printf("Successfully connected to MPV named pipe.\n")
-
 	h := http.NewServeMux()
 	srv := &http.Server{
 		Addr:    "0.0.0.0:8080",
@@ -28,6 +22,10 @@ func main() {
 	}
 
 	index := func(w http.ResponseWriter, r *http.Request, command string, response string) {
+		if err := app.ConnectToMPV(); err != nil {
+			log.Printf("failed to connect to MPV: %v", err)
+		}
+
 		source, err := os.ReadFile("index.html")
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
