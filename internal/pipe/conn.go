@@ -86,7 +86,6 @@ func (conn *Conn) readFromPipe(ctx context.Context) {
 				panic(fmt.Sprintf("failed to read from pipe: %v", err))
 			}
 		}
-		fmt.Printf("Read operation initiated, waiting for completion...\n")
 
 		go func() {
 			bytesRead, err := winapi.GetOverlappedResult(conn.pipeHandle, overlapped, true)

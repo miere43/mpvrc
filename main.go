@@ -5,27 +5,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
 	"time"
 )
 
-func utf16(s string) *uint16 {
-	utf16Str, err := syscall.UTF16PtrFromString(s)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to convert string to UTF16: %v", err))
-	}
-	return utf16Str
-}
-
 func main() {
-	mpv := NewMPV()
-	if err := mpv.Connect(); err != nil {
-		panic(fmt.Sprintf("Failed to connect to MPV: %v", err))
-	}
-	fmt.Printf("Successfully connected to MPV named pipe.\n")
+	app := NewApp()
+
+	// mpv := NewMPV()
+	// if err := mpv.Connect(); err != nil {
+	// 	panic(fmt.Sprintf("Failed to connect to MPV: %v", err))
+	// }
+	// fmt.Printf("Successfully connected to MPV named pipe.\n")
 
 	h := http.NewServeMux()
 	srv := &http.Server{
@@ -49,13 +43,13 @@ func main() {
 		}
 
 		err = t.Execute(w, struct {
-			IsConnected bool
-			Command     string
-			Response    string
+			Command       string
+			Response      string
+			StartupEvents []any
 		}{
-			IsConnected: mpv.IsConnected(),
-			Command:     command,
-			Response:    response,
+			Command:       command,
+			Response:      response,
+			StartupEvents: app.StartupEvents(),
 		})
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -68,7 +62,48 @@ func main() {
 		index(w, r, "", "")
 	})
 
-	h.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
+	shutdownSSE := make(chan struct{})
+
+	h.HandleFunc("GET /events", func(w http.ResponseWriter, r *http.Request) {
+		// Set CORS headers to allow all origins. You may want to restrict this to specific origins in a production environment.
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Expose-Headers", "Content-Type")
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		listener := app.NewEventListener()
+
+		loop := true
+		for loop {
+			select {
+			case event := <-listener.Events:
+				fmt.Fprintf(w, "data: %s\n\n", event)
+				w.(http.Flusher).Flush()
+
+			case <-r.Context().Done():
+				log.Printf("Context done!")
+				loop = false
+				app.CloseEventListener(listener)
+
+			case <-shutdownSSE:
+				log.Printf("Shutdown SSE!")
+				loop = false
+				app.CloseEventListener(listener)
+			}
+		}
+	})
+
+	h.HandleFunc("POST /connect", func(w http.ResponseWriter, r *http.Request) {
+		if err := app.ConnectToMPV(); err != nil {
+			log.Printf("POST /connect: %v", err)
+		}
+
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	})
+
+	h.HandleFunc("POST /command", func(w http.ResponseWriter, r *http.Request) {
 		commandJSON := r.FormValue("command")
 		var command []any
 		if err := json.Unmarshal([]byte(commandJSON), &command); err != nil {
@@ -77,21 +112,12 @@ func main() {
 			return
 		}
 
-		var responseText string
-		response, err := mpv.SendCommand(command, false)
+		_, err := app.SendCommand(command, false)
 		if err != nil {
-			responseText = err.Error()
-		} else {
-			responseJSON, err := json.Marshal(response)
-			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte(err.Error()))
-				return
-			}
-			responseText = string(responseJSON)
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
 		}
-
-		index(w, r, commandJSON, responseText)
 	})
 
 	go func() {
@@ -109,13 +135,15 @@ func main() {
 		fmt.Println("Shutting down HTTP server...")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+		close(shutdownSSE)
 		if err := srv.Shutdown(ctx); err != nil {
 			fmt.Printf("HTTP server Shutdown: %v\n", err)
 		}
-		mpv.Disconnect()
+		// mpv.Disconnect()
 		close(quit)
 	}()
 
 	<-quit
+
 	fmt.Println("Exiting application...")
 }

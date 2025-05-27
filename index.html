@@ -3,10 +3,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MPV Remote Control</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body>
-    <p>MPV is connected: {{.IsConnected}}</p>
-    <form action="/" method="POST">
+    <form x-data x-show="$store.connected" action="/" method="POST">
         <label for="command">
             Command: 
             <input type="text" name="command" value="{{.Command}}">
@@ -14,19 +14,67 @@
         <button type="submit">Submit</button>
     </form>
 
+    <div x-data x-show="!$store.connected">
+        MPV is not connected.
+
+        <form action="/connect" method="POST">
+            <button type="submit">Connect</button>
+        </form>
+    </div>
+
     {{if .Response}}
         <p>{{.Command}}</p>
         <p>Response:</p>
         <pre>{{.Response}}</pre>
     {{end}}
 
-    <form action="/" method="POST">
-        <input type="hidden" name="command" value="[&quot;set_property&quot;, &quot;pause&quot;, true]">
-        <button type="submit">Pause</button>
-    </form>
-    
-    <form action="/" method="POST">
-        <input type="hidden" name="command" value="[&quot;set_property&quot;, &quot;pause&quot;, false]">
-        <button type="submit">Resume</button>
-    </form>
+    <button
+        type="button"
+        x-data
+        x-on:click="$store.command(['set_property', 'pause', !$store.pause])"
+        x-text="$store.pause ? 'Resume' : 'Pause'"
+    ></button>
+
+    <div>Current playback time: <span x-data x-text="$store.playbackTime"></span></div>
+
+    <script>
+        function applyEvent(data) {
+            switch (data.event) {
+                case 'set-global-property': {
+                    Alpine.store(data.propertyName, data.value);
+                    break;
+                }
+
+                default: {
+                    console.warn('Unhandled event ' + data.event);
+                    break;
+                }
+            }
+        }
+
+        document.addEventListener('alpine:init', () => {
+            const startupEvents = {{.StartupEvents}};
+            for (const event of startupEvents) {
+                applyEvent(event);
+            }
+
+            Alpine.store('command', (args) => {
+                console.log('command args', args);
+                const body = new FormData();
+                body.append('command', JSON.stringify(args));
+                fetch('/command', {
+                    method: 'POST',
+                    body: body,
+                });
+            });
+
+            const eventSource = new EventSource('/events');
+            eventSource.onmessage = (event) => {
+                console.log('RECV', event.data)
+
+                applyEvent(JSON.parse(event.data));
+            };
+        })
+        
+    </script>
 </body>
