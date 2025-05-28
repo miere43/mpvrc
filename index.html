@@ -60,7 +60,7 @@
             </form>
         </div>
     
-        <div x-data x-cloak class="display">
+        <div x-data x-show="$store.connected" class="display">
             <div class="controls">
                 <button
                     type="button"
@@ -82,8 +82,9 @@
                 >+30s</button>
             </div>
     
-            <div>Current playback time: <span x-data x-text="$store.playbackTime"></span></div>
+            <div x-show="$store.path">Current playback time: <span x-data x-text="$store.playbackTime"></span> / <span x-data x-text="$store.duration"></span></div>
             <div>Volume: <span x-data x-text="$store.volume"></span></div>
+            <div>Path: <span x-data x-text="$store.path || 'No file selected'"></span></div>
         </div>
     </div>
 

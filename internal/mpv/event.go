@@ -12,7 +12,7 @@ type PropertyChange struct {
 	Data any    `json:"data"`
 }
 
-func (p PropertyChange) Event() string {
+func (PropertyChange) Event() string {
 	return "property-change"
 }
 

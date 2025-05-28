@@ -67,7 +67,7 @@ func TestPlaybackTimeToString(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("%v seconds must convert to %v", test.seconds, test.want), func(t *testing.T) {
-			actual := mpv.PlaybackTimeToString(test.seconds)
+			actual := mpv.FormatDuration(test.seconds)
 			if test.want != actual {
 				t.Errorf("got %v; want %v", actual, test.want)
 			}

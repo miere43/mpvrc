@@ -12,12 +12,15 @@ import (
 )
 
 type Globals struct {
-	PlaybackTime string  `json:"playbackTime" mpv:"playback-time" setter:"SetPlaybackTime"`
+	PlaybackTime string  `json:"playbackTime" mpv:"playback-time" setter:"FormatDuration"`
+	Duration     string  `json:"duration" setter:"FormatDuration"`
 	Pause        bool    `json:"pause"`
 	Volume       float64 `json:"volume"`
+	Path         string  `json:"path"`
 }
 
 type GlobalFieldInfo struct {
+	Type           reflect.Type
 	SetterFunc     reflect.Value
 	SerializedName string
 	MPVName        string
@@ -25,11 +28,11 @@ type GlobalFieldInfo struct {
 }
 
 func (g *Globals) SetFieldValue(info GlobalFieldInfo, value any) (changed bool) {
-	if value == nil {
-		log.Printf("Globals.SetFieldValue: got nil value for %q, ignoring", info.MPVName)
-		return false
-	}
 	reflectValue := reflect.ValueOf(value)
+	if value == nil {
+		log.Printf("Globals.SetFieldValue: got nil value for %q, using default value", info.MPVName)
+		reflectValue = reflect.New(info.Type).Elem()
+	}
 
 	if info.SetterFunc.IsValid() {
 		result := info.SetterFunc.Call([]reflect.Value{reflectValue})
@@ -57,13 +60,12 @@ func (g *Globals) FieldValue(info GlobalFieldInfo) any {
 	return r.FieldByIndex(info.Index).Interface()
 }
 
-func (g *Globals) SetPlaybackTime(value any) string {
-	playbackTime, ok := value.(float64)
+func (g *Globals) FormatDuration(value any) string {
+	duration, ok := value.(float64)
 	if !ok {
-		log.Printf("unexpected type for playback-time: %T", value)
-		return g.PlaybackTime
+		log.Printf("unexpected type for duration: %T", value)
 	}
-	return mpv.PlaybackTimeToString(playbackTime)
+	return mpv.FormatDuration(duration)
 }
 
 func (g *Globals) getFieldByIndex(fieldIndex int) GlobalFieldInfo {
@@ -73,6 +75,7 @@ func (g *Globals) getFieldByIndex(fieldIndex int) GlobalFieldInfo {
 	field := typeG.Field(fieldIndex)
 
 	info := GlobalFieldInfo{
+		Type:           field.Type,
 		SerializedName: field.Tag.Get("json"),
 		Index:          field.Index,
 	}
@@ -136,7 +139,7 @@ func NewApp() *App {
 		mpvEvents: make(chan any),
 
 		globals: &Globals{
-			PlaybackTime: mpv.PlaybackTimeToString(0),
+			PlaybackTime: mpv.FormatDuration(0),
 		},
 	}
 	go app.handleEvents()
@@ -156,18 +159,22 @@ func (app *App) handleEvent(event any) {
 
 	switch e := event.(type) {
 	case mpv.PropertyChange:
-		field, ok := app.globals.GetFieldByMPVName(e.Name)
-		if !ok {
-			log.Printf("handleEvent: unhandled property change: %s", e.Name)
-			break
-		}
-
-		if changed := app.globals.SetFieldValue(field, e.Data); changed {
-			app.sendEvent(app.makeGlobalPropertyEvent(field.SerializedName, app.globals.FieldValue(field)))
-		}
+		app.setMPVFieldValue(e.Name, e.Data)
 
 	default:
 		log.Printf("handleEvent: unhandled event type: %v", e)
+	}
+}
+
+func (app *App) setMPVFieldValue(mpvName string, value any) {
+	field, ok := app.globals.GetFieldByMPVName(mpvName)
+	if !ok {
+		log.Printf("setMPVFieldValue: unknown property name: %q", mpvName)
+		return
+	}
+
+	if changed := app.globals.SetFieldValue(field, value); changed {
+		app.sendEvent(app.makeGlobalPropertyEvent(field.SerializedName, app.globals.FieldValue(field)))
 	}
 }
 

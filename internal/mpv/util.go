@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func PlaybackTimeToString(seconds float64) string {
+func FormatDuration(seconds float64) string {
 	if seconds < 0 {
 		return "00:00:00"
 	}
