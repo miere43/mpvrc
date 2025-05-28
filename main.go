@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -21,7 +20,7 @@ func main() {
 		Handler: h,
 	}
 
-	index := func(w http.ResponseWriter, r *http.Request, command string, response string) {
+	h.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		if err := app.ConnectToMPV(); err != nil {
 			log.Printf("failed to connect to MPV: %v", err)
 		}
@@ -41,12 +40,8 @@ func main() {
 		}
 
 		err = t.Execute(w, struct {
-			Command       string
-			Response      string
 			StartupEvents []any
 		}{
-			Command:       command,
-			Response:      response,
 			StartupEvents: app.StartupEvents(),
 		})
 		if err != nil {
@@ -54,10 +49,6 @@ func main() {
 			w.Write([]byte(err.Error()))
 			return
 		}
-	}
-
-	h.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		index(w, r, "", "")
 	})
 
 	shutdownSSE := make(chan struct{})

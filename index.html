@@ -4,51 +4,88 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MPV Remote Control</title>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <style>
+        [x-cloak] { display: none !important; }
+
+        body {
+            margin: 0;
+        }
+        
+        .not-connected {
+            font-size: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            width: 100%;
+        }
+
+        #root {
+            height: 100%;
+            display: flex;
+        }
+
+        .connect {
+            margin-top: 20px;
+            font-size: 30px;
+        }
+
+        .display {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-evenly;
+            height: 100%;
+            width: 100%;
+        }
+
+        .controls > button {
+            font-size: 40px;
+        }
+    </style>
 </head>
 <body>
-    <form x-data x-show="$store.connected" action="/" method="POST">
-        <label for="command">
-            Command: 
-            <input type="text" name="command" value="{{.Command}}">
-        </label>
-        <button type="submit">Submit</button>
-    </form>
-
-    <div x-data x-show="!$store.connected">
-        MPV is not connected.
-
-        <form action="/" method="GET">
-            <button type="submit">Connect</button>
-        </form>
+    <div x-data x-cloak id="root">
+        <div x-data x-show="!$store.connected" class="not-connected">
+            MPV is not connected
+    
+            <form action="/" method="GET">
+                <button class="connect" type="submit">Connect</button>
+            </form>
+        </div>
+    
+        <div x-data x-cloak class="display">
+            <div class="controls">
+                <button
+                    type="button"
+                    x-data
+                    x-on:click="$store.command(['seek', -30, 'relative+exact'])"
+                >-30s</button>
+        
+                <button
+                    type="button"
+                    x-data
+                    x-on:click="$store.command(['set_property', 'pause', !$store.pause])"
+                    x-text="$store.pause ? 'Resume' : 'Pause'"
+                ></button>
+        
+                <button
+                    type="button"
+                    x-data
+                    x-on:click="$store.command(['seek', 30, 'relative+exact'])"
+                >+30s</button>
+            </div>
+    
+            <div>Current playback time: <span x-data x-text="$store.playbackTime"></span></div>
+            <div>Volume: <span x-data x-text="$store.volume"></span></div>
+        </div>
     </div>
-
-    {{if .Response}}
-        <p>{{.Command}}</p>
-        <p>Response:</p>
-        <pre>{{.Response}}</pre>
-    {{end}}
-
-    <button
-        type="button"
-        x-data
-        x-on:click="$store.command(['seek', -30, 'relative+exact'])"
-    >-30s</button>
-
-    <button
-        type="button"
-        x-data
-        x-on:click="$store.command(['set_property', 'pause', !$store.pause])"
-        x-text="$store.pause ? 'Resume' : 'Pause'"
-    ></button>
-
-    <button
-        type="button"
-        x-data
-        x-on:click="$store.command(['seek', 30, 'relative+exact'])"
-    >+30s</button>
-
-    <div>Current playback time: <span x-data x-text="$store.playbackTime"></span></div>
-    <div>Volume: <span x-data x-text="$store.volume"></span></div>
 
     <script>
         function applyEvent(data) {
@@ -87,7 +124,6 @@
 
                 applyEvent(JSON.parse(event.data));
             };
-        })
-        
+        });
     </script>
 </body>
