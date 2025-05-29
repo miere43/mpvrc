@@ -17,6 +17,7 @@ type Globals struct {
 	Pause        bool    `json:"pause"`
 	Volume       float64 `json:"volume"`
 	Path         string  `json:"path"`
+	Speed        float64 `json:"speed"`
 }
 
 type GlobalFieldInfo struct {

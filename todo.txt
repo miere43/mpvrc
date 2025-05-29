@@ -1,0 +1,2 @@
+- select file
+- show text on volume/speed change on MPV screen
