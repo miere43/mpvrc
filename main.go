@@ -28,15 +28,13 @@ func main() {
 
 		source, err := os.ReadFile("index.html")
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
+			handleError(w, err)
 			return
 		}
 
 		t, err := template.New("index.html").Parse(string(source))
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
+			handleError(w, err)
 			return
 		}
 
@@ -46,8 +44,7 @@ func main() {
 			StartupEvents: app.StartupEvents(),
 		})
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
+			handleError(w, err)
 			return
 		}
 	})
@@ -89,22 +86,19 @@ func main() {
 		commandJSON := r.FormValue("command")
 		var command []any
 		if err := json.Unmarshal([]byte(commandJSON), &command); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
+			handleError(w, err)
 			return
 		}
 
 		response, err := app.SendCommand(command, false)
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
+			handleError(w, err)
 			return
 		}
 
 		data, err := json.Marshal(response.Data)
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
+			handleError(w, err)
 			return
 		}
 
@@ -113,8 +107,7 @@ func main() {
 
 	h.HandleFunc("POST /text-command", func(w http.ResponseWriter, r *http.Request) {
 		if err := app.SendTextCommand(r.FormValue("command")); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
+			handleError(w, err)
 			return
 		}
 	})
@@ -145,4 +138,9 @@ func main() {
 	<-quit
 
 	fmt.Println("Exiting application...")
+}
+
+func handleError(w http.ResponseWriter, err error) {
+	w.WriteHeader(http.StatusBadRequest)
+	w.Write([]byte(err.Error()))
 }
