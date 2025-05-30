@@ -10,7 +10,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
+	"syscall"
 	"time"
 )
 
@@ -142,13 +145,15 @@ func main() {
 				return
 			}
 
-			if prevPath := filepath.Dir(path); prevPath != path {
-				entries = append(entries, Entry{
-					Name:  "..",
-					Path:  prevPath,
-					IsDir: true,
-				})
+			prevPath := filepath.Dir(path)
+			if prevPath == path {
+				prevPath = ""
 			}
+			entries = append(entries, Entry{
+				Name:  "..",
+				Path:  prevPath,
+				IsDir: true,
+			})
 
 			for _, entry := range dirEntries {
 				entries = append(entries, Entry{
@@ -156,6 +161,26 @@ func main() {
 					Path:  filepath.Join(path, entry.Name()),
 					IsDir: entry.IsDir(),
 				})
+			}
+
+			entries = slices.DeleteFunc(entries, func(entry Entry) bool {
+				return entry.Name != ".." && isHiddenFile(entry.Path)
+			})
+		}
+
+		slices.SortFunc(entries, func(a, b Entry) int {
+			if a.IsDir && !b.IsDir {
+				return -1
+			}
+			if !a.IsDir && b.IsDir {
+				return 1
+			}
+			return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+		})
+
+		for i, entry := range entries {
+			if entry.IsDir && entry.Name != ".." {
+				entries[i].Name = "[" + entry.Name + "]"
 			}
 		}
 
@@ -208,4 +233,22 @@ func writeJSON(w http.ResponseWriter, data any) {
 		return
 	}
 	w.Write(output)
+}
+
+func isHiddenFile(path string) bool {
+	pathW, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		log.Printf("failed to convert path to utf16: %v", err)
+		return false
+	}
+
+	attrs, err := syscall.GetFileAttributes(pathW)
+	if err != nil {
+		log.Printf("failed to get win32 file attributes: %v", err)
+		return false
+	}
+
+	hidden := (attrs & syscall.FILE_ATTRIBUTE_HIDDEN) != 0
+
+	return hidden
 }

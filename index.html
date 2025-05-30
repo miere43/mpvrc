@@ -121,7 +121,7 @@
 
             <dialog x-ref="filePicker" id="file-picker">
                 <div>
-                    <h3 x-text="$store.filePickerPath"></h3>
+                    <h3 style="margin-top:0" x-text="$store.filePickerPath"></h3>
                     <ul>
                         <template x-for="entry in $store.filePickerEntries">
                             <li><a href="#" @click="$event.preventDefault(); $store.pickFile(entry)" x-text="entry.name"></a></li>
