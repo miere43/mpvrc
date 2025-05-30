@@ -24,6 +24,7 @@
         #root {
             height: 100%;
             display: flex;
+            background-color: #fff; /* Required to support fullscreen */
         }
 
         .connect {
@@ -71,12 +72,7 @@
                     x-on:click="$store.command(['seek', -10, 'relative+exact'])"
                 >-10s</button>
         
-                <button
-                    type="button"
-                    x-data
-                    x-on:click="$store.command(['set_property', 'pause', !$store.pause])"
-                    x-text="$store.pause ? 'Resume' : 'Pause'"
-                ></button>
+                <div></div>
         
                 <button
                     type="button"
@@ -90,7 +86,12 @@
                     x-on:click="$store.command(['set_property', 'volume', $store.volume - 5])"
                 >-5v</button>
 
-                <div></div>
+                <button
+                    type="button"
+                    x-data
+                    x-on:click="$store.command(['set_property', 'pause', !$store.pause])"
+                    x-text="$store.pause ? 'Resume' : 'Pause'"
+                ></button>
 
                 <button
                     type="button"
@@ -104,7 +105,12 @@
                     x-on:click="$store.command(['set_property', 'speed', $store.speed - 0.1])"
                 >-0.1s</button>
 
-                <div></div>
+                <button
+                    type="button"
+                    x-data
+                    x-on:click="$store.toggleFullscreen()"
+                    x-text="$store.inFullscreen ? 'Exit FS' : 'Enter FS'"
+                ></button>
 
                 <button
                     type="button"
@@ -148,6 +154,19 @@
                     method: 'POST',
                     body: body,
                 });
+            });
+
+            Alpine.store('inFullscreen', false);
+            
+            Alpine.store('toggleFullscreen', async () => {
+                const root = document.getElementById('root');
+                if (Alpine.store('inFullscreen')) {
+                    await document.exitFullscreen();
+                    Alpine.store('inFullscreen', false);
+                } else {
+                    await root.requestFullscreen({ navigationUI: 'hide' });
+                    Alpine.store('inFullscreen', true);
+                }
             });
 
             const eventSource = new EventSource('/events');
