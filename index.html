@@ -204,11 +204,10 @@
             Alpine.store('filePickerEntries', []);
 
             Alpine.store('openFilePicker', async () => {
-                Alpine.store('filePickerPath', '');
-                Alpine.store('filePickerEntries', []);
+                const response = await fetch(`/file-system?path=${encodeURIComponent(Alpine.store('path'))}&dir=true`);
+                const { path, entries } = await response.json();
 
-                const response = await fetch('/file-system');
-                const entries = await response.json();
+                Alpine.store('filePickerPath', path);
                 Alpine.store('filePickerEntries', entries);
 
                 document.getElementById('file-picker').showModal();
@@ -217,9 +216,9 @@
             Alpine.store('pickFile', async (entry) => {
                 if (entry.isDir) {
                     const response = await fetch(`/file-system?path=${encodeURIComponent(entry.path)}`);
-                    const entries = await response.json();
+                    const { path, entries } = await response.json();
                     
-                    Alpine.store('filePickerPath', entry.path);
+                    Alpine.store('filePickerPath', path);
                     Alpine.store('filePickerEntries', entries);
                 } else {
                     await command(['loadfile', entry.path]);

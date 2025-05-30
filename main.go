@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -110,6 +111,15 @@ func main() {
 		entries := make([]Entry, 0)
 
 		path := filepath.Clean(r.URL.Query().Get("path"))
+		takeDir, err := strconv.ParseBool(r.URL.Query().Get("dir"))
+		if err != nil {
+			takeDir = false
+		}
+
+		if takeDir {
+			path = filepath.Dir(path)
+		}
+
 		if path == "." {
 			// Get names of all drives (Windows)
 			for _, drive := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
@@ -132,7 +142,7 @@ func main() {
 				return
 			}
 
-			if prevPath := filepath.Dir(path); prevPath != "/" {
+			if prevPath := filepath.Dir(path); prevPath != path {
 				entries = append(entries, Entry{
 					Name:  "..",
 					Path:  prevPath,
@@ -149,7 +159,13 @@ func main() {
 			}
 		}
 
-		writeJSON(w, entries)
+		writeJSON(w, struct {
+			Path    string  `json:"path"`
+			Entries []Entry `json:"entries"`
+		}{
+			Path:    path,
+			Entries: entries,
+		})
 	})
 
 	go func() {
