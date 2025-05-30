@@ -133,7 +133,7 @@
             </dialog>
 
             <div x-show="$store.path">Current playback time: <span x-data x-text="$store.playbackTime"></span> / <span x-data x-text="$store.duration"></span></div>
-            <div>Volume: <span x-data x-text="$store.volume"></span> | Speed: <span x-data x-text="$store.speed"></span></div>
+            <div>Volume: <span x-data x-text="$store.volume"></span>% | Speed: <span x-data x-text="$store.speed"></span></div>
             <div>Path: <a href="#" @click="$event.preventDefault(); $store.openFilePicker()"><span x-data x-text="$store.path || 'No file selected'"></span></a></div>
         </div>
     </div>
