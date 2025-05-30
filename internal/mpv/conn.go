@@ -149,19 +149,6 @@ func (mpv *Conn) SendCommand(command []any, async bool) (MpvResponse, error) {
 	return response, errors.New(response.Error)
 }
 
-func (mpv *Conn) SendTextCommand(cmd string) error {
-	if len(cmd) == 0 {
-		return fmt.Errorf("command is empty")
-	} else if cmd[0] == '{' {
-		// If the first character (after skipping whitespace) is not {, the command will be interpreted as non-JSON text command, as they are used in input.conf.
-		return fmt.Errorf("text command cannot start with '{'")
-	}
-	if err := mpv.conn.Write([]byte(cmd + "\n")); err != nil {
-		return fmt.Errorf("failed to write: %w", err)
-	}
-	return nil
-}
-
 func (mpv *Conn) ObserveProperty(property string) {
 	_, err := mpv.SendCommand([]any{"observe_property", mpv.nextPropertyID.Add(1), property}, false)
 	if err != nil {

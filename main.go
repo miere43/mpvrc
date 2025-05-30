@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"time"
 )
 
@@ -96,20 +97,59 @@ func main() {
 			return
 		}
 
-		data, err := json.Marshal(response.Data)
-		if err != nil {
-			handleError(w, err)
-			return
-		}
-
-		w.Write(data)
+		writeJSON(w, response.Data)
 	})
 
-	h.HandleFunc("POST /text-command", func(w http.ResponseWriter, r *http.Request) {
-		if err := app.SendTextCommand(r.FormValue("command")); err != nil {
-			handleError(w, err)
-			return
+	h.HandleFunc("GET /file-system", func(w http.ResponseWriter, r *http.Request) {
+		type Entry struct {
+			Name  string `json:"name"`
+			Path  string `json:"path"`
+			IsDir bool   `json:"isDir"`
 		}
+
+		entries := make([]Entry, 0)
+
+		path := filepath.Clean(r.URL.Query().Get("path"))
+		if path == "." {
+			// Get names of all drives (Windows)
+			for _, drive := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
+				drivePath := fmt.Sprintf("%c:/", drive)
+				if _, err := os.Stat(drivePath); err == nil {
+					entries = append(entries, Entry{
+						Name:  drivePath,
+						Path:  drivePath,
+						IsDir: true,
+					})
+				}
+			}
+		} else if !filepath.IsAbs(path) {
+			handleError(w, fmt.Errorf("path %q must be absolute", path))
+			return
+		} else {
+			dirEntries, err := os.ReadDir(path)
+			if err != nil {
+				handleError(w, err)
+				return
+			}
+
+			if prevPath := filepath.Dir(path); prevPath != "/" {
+				entries = append(entries, Entry{
+					Name:  "..",
+					Path:  prevPath,
+					IsDir: true,
+				})
+			}
+
+			for _, entry := range dirEntries {
+				entries = append(entries, Entry{
+					Name:  entry.Name(),
+					Path:  filepath.Join(path, entry.Name()),
+					IsDir: entry.IsDir(),
+				})
+			}
+		}
+
+		writeJSON(w, entries)
 	})
 
 	go func() {
@@ -143,4 +183,13 @@ func main() {
 func handleError(w http.ResponseWriter, err error) {
 	w.WriteHeader(http.StatusBadRequest)
 	w.Write([]byte(err.Error()))
+}
+
+func writeJSON(w http.ResponseWriter, data any) {
+	output, err := json.Marshal(data)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	w.Write(output)
 }

@@ -69,7 +69,7 @@
                 <button
                     type="button"
                     x-data
-                    x-on:click="$store.seek(-10)"
+                    @click="$store.seek(-10)"
                 >-10s</button>
         
                 <div></div>
@@ -77,51 +77,64 @@
                 <button
                     type="button"
                     x-data
-                    x-on:click="$store.seek(+10)"
+                    @click="$store.seek(+10)"
                 >+10s</button>
 
                 <button
                     type="button"
                     x-data
-                    x-on:click="$store.changeVolume(-6)"
+                    @click="$store.changeVolume(-6)"
                 >-6v</button>
 
                 <button
                     type="button"
                     x-data
-                    x-on:click="$store.command(['set_property', 'pause', !$store.pause])"
+                    @click="$store.command(['set_property', 'pause', !$store.pause])"
                     x-text="$store.pause ? 'Resume' : 'Pause'"
                 ></button>
 
                 <button
                     type="button"
                     x-data
-                    x-on:click="$store.changeVolume(+6)"
+                    @click="$store.changeVolume(+6)"
                 >+6v</button>
 
                 <button
                     type="button"
                     x-data
-                    x-on:click="$store.changeSpeed(-0.1)"
+                    @click="$store.changeSpeed(-0.1)"
                 >-0.1s</button>
 
                 <button
                     type="button"
                     x-data
-                    x-on:click="$store.toggleFullscreen()"
+                    @click="$store.toggleFullscreen()"
                     x-text="$store.inFullscreen ? 'Exit FS' : 'Enter FS'"
                 ></button>
 
                 <button
                     type="button"
                     x-data
-                    x-on:click="$store.changeSpeed(+0.1)"
+                    @click="$store.changeSpeed(+0.1)"
                 >+0.1s</button>
             </div>
-    
+
+            <dialog x-ref="filePicker" id="file-picker">
+                <div>
+                    <h3 x-text="$store.filePickerPath"></h3>
+                    <ul>
+                        <template x-for="entry in $store.filePickerEntries">
+                            <li><a href="#" @click="$event.preventDefault(); $store.pickFile(entry)" x-text="entry.name"></a></li>
+                        </template>
+                    </ul>
+                </div>
+
+                <button type="button" @click="$refs.filePicker.close()">Cancel</button>
+            </dialog>
+
             <div x-show="$store.path">Current playback time: <span x-data x-text="$store.playbackTime"></span> / <span x-data x-text="$store.duration"></span></div>
             <div>Volume: <span x-data x-text="$store.volume"></span> | Speed: <span x-data x-text="$store.speed"></span></div>
-            <div>Path: <span x-data x-text="$store.path || 'No file selected'"></span></div>
+            <div>Path: <a href="#" @click="$event.preventDefault(); $store.openFilePicker()"><span x-data x-text="$store.path || 'No file selected'"></span></a></div>
         </div>
     </div>
 
@@ -165,40 +178,55 @@
                 });
             }
 
-            function textCommand(cmd) {
-                console.log('text command:', cmd);
-                const body = new FormData();
-                body.append('command', cmd);
-                return fetch('/text-command', {
-                    method: 'POST',
-                    body: body,
-                });
-            }
-
             Alpine.store('seek', async change => {
                 await command(['seek', change, 'relative+exact']);
                 const playbackTimeResponse = await command(['get_property', 'playback-time']);
                 const playbackTime = await playbackTimeResponse.json();
-                await textCommand(`show-text "${formatDuration(playbackTime)}"`);
+                await command(['show-text', formatDuration(playbackTime)]);
             });
 
             Alpine.store('changeVolume', async change => {
                 const newVolume = Alpine.store('volume') + change;
                 await command(['set_property', 'volume', newVolume]);
-                await textCommand(`show-text "Volume: ${newVolume}%"`);
+                await command(['show-text', `Volume: ${newVolume}%`]);
             });
 
             Alpine.store('changeSpeed', async change => {
                 let newSpeed = Alpine.store('speed') + change;
                 newSpeed = Math.round(newSpeed * 10) / 10;
                 await command(['set_property', 'speed', newSpeed]);
-                await textCommand(`show-text "Speed: ${newSpeed}"`);
+                await command(['show-text', `Speed: ${newSpeed}`]);
             });
 
             Alpine.store('command', command);
-            Alpine.store('textCommand', textCommand);
             Alpine.store('inFullscreen', false);
-            
+            Alpine.store('filePickerPath', '');
+            Alpine.store('filePickerEntries', []);
+
+            Alpine.store('openFilePicker', async () => {
+                Alpine.store('filePickerPath', '');
+                Alpine.store('filePickerEntries', []);
+
+                const response = await fetch('/file-system');
+                const entries = await response.json();
+                Alpine.store('filePickerEntries', entries);
+
+                document.getElementById('file-picker').showModal();
+            });
+
+            Alpine.store('pickFile', async (entry) => {
+                if (entry.isDir) {
+                    const response = await fetch(`/file-system?path=${encodeURIComponent(entry.path)}`);
+                    const entries = await response.json();
+                    
+                    Alpine.store('filePickerPath', entry.path);
+                    Alpine.store('filePickerEntries', entries);
+                } else {
+                    await command(['loadfile', entry.path]);
+                    document.getElementById('file-picker').close();
+                }
+            });
+
             Alpine.store('toggleFullscreen', async () => {
                 const root = document.getElementById('root');
                 if (Alpine.store('inFullscreen')) {
