@@ -102,7 +102,7 @@
                 <button
                     type="button"
                     x-data
-                    x-on:click="$store.command(['set_property', 'speed', $store.speed - 0.1])"
+                    x-on:click="$store.command(['set_property', 'speed', $store.roundSpeed($store.speed - 0.1)])"
                 >-0.1s</button>
 
                 <button
@@ -115,7 +115,7 @@
                 <button
                     type="button"
                     x-data
-                    x-on:click="$store.command(['set_property', 'speed', $store.speed + 0.1])"
+                    x-on:click="$store.command(['set_property', 'speed', $store.roundSpeed($store.speed + 0.1)])"
                 >+0.1s</button>
             </div>
     
@@ -154,6 +154,10 @@
                     method: 'POST',
                     body: body,
                 });
+            });
+
+            Alpine.store('roundSpeed', speed => {
+                return Math.round(speed * 10) / 10;
             });
 
             Alpine.store('inFullscreen', false);
