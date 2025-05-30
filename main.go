@@ -94,8 +94,25 @@ func main() {
 			return
 		}
 
-		_, err := app.SendCommand(command, false)
+		response, err := app.SendCommand(command, false)
 		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		data, err := json.Marshal(response.Data)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		w.Write(data)
+	})
+
+	h.HandleFunc("POST /text-command", func(w http.ResponseWriter, r *http.Request) {
+		if err := app.SendTextCommand(r.FormValue("command")); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte(err.Error()))
 			return

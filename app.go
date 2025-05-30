@@ -250,6 +250,16 @@ func (app *App) SendCommand(args []any, async bool) (mpv.MpvResponse, error) {
 	return app.mpv.SendCommand(args, async)
 }
 
+func (app *App) SendTextCommand(cmd string) error {
+	app.m.Lock()
+	defer app.m.Unlock()
+
+	if app.mpv == nil {
+		return fmt.Errorf("not connected to mpv")
+	}
+	return app.mpv.SendTextCommand(cmd)
+}
+
 func (app *App) IsConnectedToMPV() bool {
 	app.m.Lock()
 	defer app.m.Unlock()

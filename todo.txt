@@ -1,3 +1,2 @@
 - select file
-- show text on volume/speed change on MPV screen
 - allow to reconnect to mpv without restarting application when IPC dies
