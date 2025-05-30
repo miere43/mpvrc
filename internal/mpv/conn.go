@@ -1,6 +1,7 @@
 package mpv
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,6 +27,7 @@ type MpvResponse struct {
 }
 
 type Conn struct {
+	ctx   context.Context
 	conn  *pipe.Conn
 	reads chan []byte
 
@@ -54,6 +56,7 @@ func Dial(events chan any) (*Conn, error) {
 	}
 
 	mpv := &Conn{
+		ctx:   conn.Context(),
 		conn:  conn,
 		reads: reads,
 
@@ -71,9 +74,18 @@ func Dial(events chan any) (*Conn, error) {
 	return mpv, nil
 }
 
+func (mpv *Conn) Context() context.Context {
+	return mpv.ctx
+}
+
 func (mpv *Conn) Disconnect() {
+	if mpv.conn == nil {
+		log.Printf("Disconnect: mpv already disconnected")
+		return
+	}
+
 	if err := mpv.conn.Close(); err != nil {
-		panic(fmt.Sprintf("failed to close MPV named pipe: %v", err))
+		log.Printf("failed to close MPV named pipe: %v", err)
 	}
 	close(mpv.reads)
 	mpv.wg.Wait()
@@ -163,30 +175,36 @@ func (mpv *Conn) readResponses() {
 	// Stores incomplete messages
 	var buffer []byte
 
-	for partialRead := range mpv.reads {
-		buffer = append(buffer, partialRead...)
+	for {
+		select {
+		case <-mpv.conn.Context().Done():
+			return
 
-		for {
-			var completeRead []byte
-			buffer, completeRead = NextIPCMessage(buffer)
-			if completeRead == nil {
-				break
-			}
+		case partialRead := <-mpv.reads:
+			buffer = append(buffer, partialRead...)
 
-			event, err := ParseEvent(completeRead)
-			if errors.Is(err, ErrUnknownEvent) {
-				var response MpvResponse
-				if err := json.Unmarshal(completeRead, &response); err != nil {
-					panic(fmt.Sprintf("unmarshal response: %v \"%v\"", err, string(completeRead)))
+			for {
+				var completeRead []byte
+				buffer, completeRead = NextIPCMessage(buffer)
+				if completeRead == nil {
+					break
 				}
 
-				if response.RequestID != 0 {
-					mpv.setResponse(response.RequestID, response)
+				event, err := ParseEvent(completeRead)
+				if errors.Is(err, ErrUnknownEvent) {
+					var response MpvResponse
+					if err := json.Unmarshal(completeRead, &response); err != nil {
+						panic(fmt.Sprintf("unmarshal response: %v \"%v\"", err, string(completeRead)))
+					}
+
+					if response.RequestID != 0 {
+						mpv.setResponse(response.RequestID, response)
+					}
+				} else if err != nil {
+					log.Printf("failed to parse MPV event: %v \"%v\"", err, string(completeRead))
+				} else {
+					mpv.events <- event
 				}
-			} else if err != nil {
-				log.Printf("failed to parse MPV event: %v \"%v\"", err, string(completeRead))
-			} else {
-				mpv.events <- event
 			}
 		}
 	}

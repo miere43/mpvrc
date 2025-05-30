@@ -15,7 +15,8 @@ type Conn struct {
 	pipeHandle syscall.Handle
 	reads      chan<- []byte
 	writes     chan []byte
-	cancel     context.CancelFunc
+	ctx        context.Context
+	cancelCtx  context.CancelFunc
 	canceled   bool
 	wg         *sync.WaitGroup
 }
@@ -53,7 +54,8 @@ func Dial(name string, reads chan<- []byte) (*Conn, error) {
 		pipeHandle: pipeHandle,
 		reads:      reads,
 		writes:     writes,
-		cancel:     cancel,
+		ctx:        ctx,
+		cancelCtx:  cancel,
 		wg:         &sync.WaitGroup{},
 	}
 
@@ -63,6 +65,10 @@ func Dial(name string, reads chan<- []byte) (*Conn, error) {
 
 	pipeHandle = 0 // Prevent closing the handle in the defer statement
 	return conn, nil
+}
+
+func (conn *Conn) Context() context.Context {
+	return conn.ctx
 }
 
 func (conn *Conn) readFromPipe(ctx context.Context) {
@@ -83,7 +89,9 @@ func (conn *Conn) readFromPipe(ctx context.Context) {
 	for {
 		if err = syscall.ReadFile(conn.pipeHandle, buffer[:], nil, overlapped); err != nil {
 			if !errors.Is(err, syscall.ERROR_IO_PENDING) {
-				panic(fmt.Sprintf("failed to read from pipe: %v", err))
+				log.Printf("failed to read from pipe: %v", err)
+				conn.cancel()
+				return
 			}
 		}
 
@@ -91,7 +99,6 @@ func (conn *Conn) readFromPipe(ctx context.Context) {
 			bytesRead, err := winapi.GetOverlappedResult(conn.pipeHandle, overlapped, true)
 			if err != nil {
 				log.Printf("failed to get overlapped result: %v\n", err)
-				conn.canceled = true
 				conn.cancel()
 				return
 			}
@@ -178,7 +185,7 @@ func (c *Conn) Close() error {
 		return errors.New("connection already closed")
 	}
 
-	c.cancel()
+	c.cancelCtx()
 	close(c.writes)
 	c.wg.Wait()
 
@@ -188,4 +195,9 @@ func (c *Conn) Close() error {
 
 	c.pipeHandle = 0
 	return nil
+}
+
+func (c *Conn) cancel() {
+	c.canceled = true
+	c.cancelCtx()
 }

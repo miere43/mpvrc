@@ -1,2 +1,1 @@
 - select file
-- allow to reconnect to mpv without restarting application when IPC dies

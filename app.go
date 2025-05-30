@@ -221,8 +221,16 @@ func (app *App) connectToMPVCore() (bool, error) {
 	}
 
 	app.mpv = mpv
-	return true, nil
 
+	go func() {
+		<-mpv.Context().Done()
+
+		app.m.Lock()
+		defer app.m.Unlock()
+		app.mpv = nil // Allow us to reconnect next time.
+	}()
+
+	return true, nil
 }
 
 func (app *App) ConnectToMPV() error {
