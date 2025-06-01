@@ -1,3 +1,3 @@
-module github.com/miere43/mpv-web-go
+module github.com/miere43/mpvrc
 
 go 1.24.1

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/miere43/mpv-web-go/internal/winapi"
+	"github.com/miere43/mpvrc/internal/winapi"
 )
 
 type Conn struct {

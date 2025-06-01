@@ -1,1 +1,2 @@
 - send connected status by SSE
+- switch audio output device

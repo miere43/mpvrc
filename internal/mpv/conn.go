@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/miere43/mpv-web-go/internal/pipe"
+	"github.com/miere43/mpvrc/internal/pipe"
 )
 
 type MpvCommand struct {

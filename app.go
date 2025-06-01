@@ -8,7 +8,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/miere43/mpv-web-go/internal/mpv"
+	"github.com/miere43/mpvrc/internal/mpv"
 )
 
 type Globals struct {
