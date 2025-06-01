@@ -227,6 +227,9 @@ func (app *App) connectToMPVCore() (bool, error) {
 
 		app.m.Lock()
 		defer app.m.Unlock()
+
+		app.sendEvent(app.makeGlobalPropertyEvent("connected", false))
+
 		app.mpv = nil // Allow us to reconnect next time.
 	}()
 
