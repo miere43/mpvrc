@@ -13,13 +13,11 @@ const (
 var kernel32 *syscall.LazyDLL
 var createEvent *syscall.LazyProc
 var getOverlappedResult *syscall.LazyProc
-var setNamedPipeHandleState *syscall.LazyProc
 
 func init() {
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 	createEvent = kernel32.NewProc("CreateEventW")
 	getOverlappedResult = kernel32.NewProc("GetOverlappedResult")
-	setNamedPipeHandleState = kernel32.NewProc("SetNamedPipeHandleState")
 }
 
 func CreateEventW(lpEventAttributes uintptr, bManualReset, bInitialState bool) (syscall.Handle, error) {
@@ -64,19 +62,4 @@ func GetOverlappedResult(handle syscall.Handle, overlapped *syscall.Overlapped, 
 	}
 
 	return bytesTransferred, nil
-}
-
-func SetNamedPipeHandleState(handle syscall.Handle, mode *uint32, maxCollectionCount *uint32, collectDataTimeout *uint32) error {
-	ret, _, err := setNamedPipeHandleState.Call(
-		uintptr(handle),
-		uintptr(unsafe.Pointer(mode)),
-		uintptr(unsafe.Pointer(maxCollectionCount)),
-		uintptr(unsafe.Pointer(collectDataTimeout)),
-	)
-
-	if ret == 0 {
-		return fmt.Errorf("SetNamedPipeHandleState failed: %w", err)
-	}
-
-	return nil
 }
