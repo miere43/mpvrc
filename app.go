@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/miere43/mpvrc/internal/mpv"
 )
@@ -147,6 +148,19 @@ func NewApp() *App {
 	return app
 }
 
+func (app *App) handleCommandLineFromFromOtherInstance(args []string) {
+	if len(args) < 2 {
+		return
+	}
+
+	loadfile := args[1]
+
+	_, err := app.SendCommand([]any{"loadfile", loadfile}, false)
+	if err != nil {
+		log.Printf("failed to send loadfile command to mpv: %v", err)
+	}
+}
+
 func (app *App) handleEvents() {
 	for event := range app.mpvEvents {
 		app.handleEvent(event)
@@ -205,7 +219,7 @@ func (app *App) sendEvent(event any) {
 	}
 }
 
-func (app *App) connectToMPVCore() (bool, error) {
+func (app *App) connectToMPVCore(timeout time.Duration) (bool, error) {
 	app.m.Lock()
 	defer app.m.Unlock()
 
@@ -215,7 +229,7 @@ func (app *App) connectToMPVCore() (bool, error) {
 		return false, nil
 	}
 
-	mpv, err := mpv.Dial(app.mpvEvents)
+	mpv, err := mpv.Dial(app.mpvEvents, timeout)
 	if err != nil {
 		return false, fmt.Errorf("failed to connect to mpv: %v", err)
 	}
@@ -236,8 +250,8 @@ func (app *App) connectToMPVCore() (bool, error) {
 	return true, nil
 }
 
-func (app *App) ConnectToMPV() error {
-	wantInit, err := app.connectToMPVCore()
+func (app *App) ConnectToMPV(timeout time.Duration) error {
+	wantInit, err := app.connectToMPVCore(timeout)
 	if err != nil {
 		return err
 	}

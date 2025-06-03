@@ -7,11 +7,12 @@ import (
 	"log"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/miere43/mpvrc/internal/winapi"
 )
 
-type Conn struct {
+type Client struct {
 	pipeHandle syscall.Handle
 	reads      chan<- []byte
 	writes     chan []byte
@@ -21,7 +22,7 @@ type Conn struct {
 	wg         *sync.WaitGroup
 }
 
-func Dial(name string, reads chan<- []byte) (*Conn, error) {
+func Dial(name string, timeout time.Duration, reads chan<- []byte) (*Client, error) {
 	writes := make(chan []byte)
 	var pipeHandle syscall.Handle
 	defer func() {
@@ -36,21 +37,36 @@ func Dial(name string, reads chan<- []byte) (*Conn, error) {
 		return nil, fmt.Errorf("failed to convert string to UTF16: %w", err)
 	}
 
-	pipeHandle, err = syscall.CreateFile(
-		name16,
-		syscall.GENERIC_READ|syscall.GENERIC_WRITE,
-		0,
-		nil,
-		syscall.OPEN_EXISTING,
-		syscall.FILE_ATTRIBUTE_NORMAL|syscall.FILE_FLAG_OVERLAPPED,
-		0,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to named pipe: %w", err)
+	var access uint32 = syscall.GENERIC_WRITE
+	if reads != nil {
+		access |= syscall.GENERIC_READ
+	}
+
+	maxInstant := time.Now().UTC().Add(timeout)
+
+	for {
+		pipeHandle, err = syscall.CreateFile(
+			name16,
+			access,
+			0,
+			nil,
+			syscall.OPEN_EXISTING,
+			syscall.FILE_ATTRIBUTE_NORMAL|syscall.FILE_FLAG_OVERLAPPED,
+			0,
+		)
+		if err == nil {
+			break
+		} else if !(errors.Is(err, syscall.ERROR_FILE_NOT_FOUND) || errors.Is(err, winapi.ERROR_PIPE_BUSY)) {
+			return nil, fmt.Errorf("failed to connect to named pipe: %w", err)
+		} else if time.Now().UTC().After(maxInstant) {
+			return nil, fmt.Errorf("timed out while waiting for named pipe to become available: %w", err)
+		}
+
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	conn := &Conn{
+	client := &Client{
 		pipeHandle: pipeHandle,
 		reads:      reads,
 		writes:     writes,
@@ -59,20 +75,24 @@ func Dial(name string, reads chan<- []byte) (*Conn, error) {
 		wg:         &sync.WaitGroup{},
 	}
 
-	conn.wg.Add(2)
-	go conn.readFromPipe(ctx)
-	go conn.writeToPipe(ctx)
+	if reads != nil {
+		client.wg.Add(1)
+		go client.readFromPipe(ctx)
+	}
+
+	client.wg.Add(1)
+	go client.writeToPipe(ctx)
 
 	pipeHandle = 0 // Prevent closing the handle in the defer statement
-	return conn, nil
+	return client, nil
 }
 
-func (conn *Conn) Context() context.Context {
-	return conn.ctx
+func (c *Client) Context() context.Context {
+	return c.ctx
 }
 
-func (conn *Conn) readFromPipe(ctx context.Context) {
-	defer conn.wg.Done()
+func (c *Client) readFromPipe(ctx context.Context) {
+	defer c.wg.Done()
 
 	event, err := winapi.CreateEventW(0, false, false)
 	if err != nil {
@@ -87,19 +107,19 @@ func (conn *Conn) readFromPipe(ctx context.Context) {
 
 	var buffer [1024 * 8]byte
 	for {
-		if err = syscall.ReadFile(conn.pipeHandle, buffer[:], nil, overlapped); err != nil {
+		if err = syscall.ReadFile(c.pipeHandle, buffer[:], nil, overlapped); err != nil {
 			if !errors.Is(err, syscall.ERROR_IO_PENDING) {
 				log.Printf("failed to read from pipe: %v", err)
-				conn.cancel()
+				c.cancel()
 				return
 			}
 		}
 
 		go func() {
-			bytesRead, err := winapi.GetOverlappedResult(conn.pipeHandle, overlapped, true)
+			bytesRead, err := winapi.GetOverlappedResult(c.pipeHandle, overlapped, true)
 			if err != nil {
 				log.Printf("failed to get overlapped result: %v\n", err)
-				conn.cancel()
+				c.cancel()
 				return
 			}
 
@@ -108,7 +128,7 @@ func (conn *Conn) readFromPipe(ctx context.Context) {
 
 			fmt.Printf("Read operation completed, %d bytes read: %s\n", bytesRead, string(responseJSON))
 
-			conn.reads <- responseJSON
+			c.reads <- responseJSON
 			overlappedDone <- struct{}{}
 		}()
 
@@ -121,8 +141,8 @@ func (conn *Conn) readFromPipe(ctx context.Context) {
 	}
 }
 
-func (conn *Conn) writeToPipe(ctx context.Context) {
-	defer conn.wg.Done()
+func (c *Client) writeToPipe(ctx context.Context) {
+	defer c.wg.Done()
 
 	event, err := winapi.CreateEventW(0, false, false)
 	if err != nil {
@@ -137,9 +157,9 @@ func (conn *Conn) writeToPipe(ctx context.Context) {
 
 	for {
 		select {
-		case write := <-conn.writes:
+		case write := <-c.writes:
 			fmt.Printf("Preparing to write %d bytes to pipe: %s\n", len(write), string(write))
-			if err = syscall.WriteFile(conn.pipeHandle, write, nil, overlapped); err != nil {
+			if err = syscall.WriteFile(c.pipeHandle, write, nil, overlapped); err != nil {
 				panic(fmt.Sprintf("Failed to write to pipe: %v", err))
 			}
 
@@ -147,7 +167,7 @@ func (conn *Conn) writeToPipe(ctx context.Context) {
 
 			var bytesWritten uint32
 			go func() {
-				bytesWritten, err = winapi.GetOverlappedResult(conn.pipeHandle, overlapped, true)
+				bytesWritten, err = winapi.GetOverlappedResult(c.pipeHandle, overlapped, true)
 				if err != nil {
 					panic(fmt.Sprintf("failed to get overlapped result: %v", err))
 				}
@@ -168,7 +188,7 @@ func (conn *Conn) writeToPipe(ctx context.Context) {
 	}
 }
 
-func (c *Conn) Write(data []byte) error {
+func (c *Client) Write(data []byte) error {
 	if c.pipeHandle == 0 {
 		return errors.New("connection already closed")
 	}
@@ -180,7 +200,7 @@ func (c *Conn) Write(data []byte) error {
 	return nil
 }
 
-func (c *Conn) Close() error {
+func (c *Client) Close() error {
 	if c.pipeHandle == 0 {
 		return errors.New("connection already closed")
 	}
@@ -197,7 +217,7 @@ func (c *Conn) Close() error {
 	return nil
 }
 
-func (c *Conn) cancel() {
+func (c *Client) cancel() {
 	c.canceled = true
 	c.cancelCtx()
 }

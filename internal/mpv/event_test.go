@@ -3,7 +3,7 @@ package mpv_test
 import (
 	"testing"
 
-	"github.com/miere43/mpv-web-go/internal/mpv"
+	"github.com/miere43/mpvrc/internal/mpv"
 )
 
 func TestParseEvent(t *testing.T) {

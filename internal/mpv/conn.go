@@ -8,6 +8,7 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/miere43/mpvrc/internal/pipe"
 )
@@ -28,7 +29,7 @@ type MpvResponse struct {
 
 type Conn struct {
 	ctx   context.Context
-	conn  *pipe.Conn
+	conn  *pipe.Client
 	reads chan []byte
 
 	wg             *sync.WaitGroup
@@ -46,11 +47,11 @@ type Conn struct {
 	// mpvProcess *exec.Cmd
 }
 
-func Dial(events chan any) (*Conn, error) {
+func Dial(events chan any, timeout time.Duration) (*Conn, error) {
 	const pipeName = "\\\\.\\pipe\\mpvsocket"
 
 	reads := make(chan []byte)
-	conn, err := pipe.Dial(pipeName, reads)
+	conn, err := pipe.Dial(pipeName, timeout, reads)
 	if err != nil {
 		return nil, err
 	}
