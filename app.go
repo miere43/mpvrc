@@ -2,14 +2,19 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
 	"reflect"
 	"slices"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/miere43/mpvrc/internal/mpv"
+	"github.com/miere43/mpvrc/internal/pipe"
 )
 
 type Globals struct {
@@ -129,6 +134,9 @@ type App struct {
 	mpvEvents chan any
 
 	globals *Globals
+
+	quit    bool
+	quitApp chan struct{}
 }
 
 type AppEventListener struct {
@@ -136,16 +144,117 @@ type AppEventListener struct {
 	ID     int
 }
 
-func NewApp() *App {
+const uniqueInstancePipeName = "\\\\.\\pipe\\mpvrc-unique"
+
+func NewApp() (*App, bool) {
 	app := &App{
 		mpvEvents: make(chan any),
 
 		globals: &Globals{
 			PlaybackTime: mpv.FormatDuration(0),
 		},
+		quitApp: make(chan struct{}),
 	}
+
+	if app.redirectToExistingApplicationInstance() {
+		return nil, false
+	}
+
+	app.registerUniqueApplicationInstance()
+	app.startMPV()
+
 	go app.handleEvents()
-	return app
+	return app, true
+}
+
+func (app *App) RequestQuit() {
+	app.m.Lock()
+	defer app.m.Unlock()
+
+	if !app.quit {
+		app.quit = true
+		close(app.quitApp)
+	}
+}
+
+func (app *App) Done() <-chan struct{} {
+	return app.quitApp
+}
+
+func (app *App) startMPV() {
+	args := []string{"--force-window", "--idle", "--input-ipc-server=mpvsocket"}
+	if len(os.Args) > 1 {
+		args = append(args, os.Args[1])
+	}
+
+	cmd := exec.Command("C:/soft/mpv/mpv.exe", args...)
+	if err := cmd.Start(); err != nil {
+		log.Fatalf("failed to start cmd: %v", err)
+	}
+
+	if err := app.ConnectToMPV(500 * time.Millisecond); err != nil {
+		log.Fatalf("failed to connect to mpv after startup: %v", err)
+	}
+
+	go func() {
+		log.Printf("waiting for mpv to exit...")
+		if err := cmd.Wait(); err != nil {
+			log.Printf("failed to wait for mpv to close: %v", err)
+		}
+		app.RequestQuit()
+	}()
+}
+
+func (app *App) redirectToExistingApplicationInstance() bool {
+	client, err := pipe.Dial(uniqueInstancePipeName, 0, nil)
+	if errors.Is(err, syscall.ERROR_FILE_NOT_FOUND) {
+		log.Print("existing mpvrc instance not found, continuing with normal execution")
+		return false
+	} else if err != nil {
+		log.Fatalf("failed to connect to existing mpvrc instance: %v", err)
+	}
+	defer func() {
+		if err := client.Close(); err != nil {
+			log.Printf("failed to close pipe to existing mpvrc instance: %v", err)
+		}
+	}()
+
+	log.Printf("found existing mpvrc instance, redirecting command line args to it: %v", os.Args)
+
+	argsJSON, err := json.Marshal(os.Args)
+	if err != nil {
+		log.Fatalf("failed to marshal args: %v", err)
+	}
+
+	if err := client.Write(argsJSON); err != nil {
+		log.Fatalf("failed to send data to existing mpvrc instance: %v", err)
+	}
+	return true
+}
+
+func (app *App) registerUniqueApplicationInstance() {
+	server, err := pipe.NewServer(uniqueInstancePipeName, func(client *pipe.ConnectedClient) {
+		argsJSON, err := client.ReadMessage()
+		if err != nil {
+			log.Fatalf("failed to read message from connected client: %v", err)
+		}
+
+		var args []string
+		if err := json.Unmarshal(argsJSON, &args); err != nil {
+			log.Fatalf("failed to unmarshal json args: %v", err)
+		}
+
+		app.handleCommandLineFromFromOtherInstance(args)
+	})
+	if err != nil {
+		log.Fatalf("failed to register unique application instance: %v", err)
+	}
+
+	log.Printf("created named pipe server for communication with other mpvrc instances")
+
+	go func() {
+		server.Serve()
+	}()
 }
 
 func (app *App) handleCommandLineFromFromOtherInstance(args []string) {

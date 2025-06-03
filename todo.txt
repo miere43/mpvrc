@@ -1,2 +1,1 @@
 - switch audio output device
-- close mpvrc when mpv GUI is closed

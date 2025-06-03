@@ -3,13 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"slices"
@@ -17,85 +15,12 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/miere43/mpvrc/internal/pipe"
 )
 
-func redirectToExistingApplicationInstance() bool {
-	client, err := pipe.Dial("\\\\.\\pipe\\mpvrc-unique", 0, nil)
-	if errors.Is(err, syscall.ERROR_FILE_NOT_FOUND) {
-		log.Print("existing mpvrc instance not found, continuing with normal execution")
-		return false
-	} else if err != nil {
-		log.Fatalf("failed to connect to existing mpvrc instance: %v", err)
-	}
-	defer func() {
-		if err := client.Close(); err != nil {
-			log.Printf("failed to close pipe to existing mpvrc instance: %v", err)
-		}
-	}()
-
-	log.Printf("found existing mpvrc instance, redirecting command line args to it: %v", os.Args)
-
-	argsJSON, err := json.Marshal(os.Args)
-	if err != nil {
-		log.Fatalf("failed to marshal args: %v", err)
-	}
-
-	if err := client.Write(argsJSON); err != nil {
-		log.Fatalf("failed to send data to existing mpvrc instance: %v", err)
-	}
-	return true
-}
-
-func registerUniqueApplicationInstance(app *App) {
-	server, err := pipe.NewServer("\\\\.\\pipe\\mpvrc-unique", func(client *pipe.ConnectedClient) {
-		argsJSON, err := client.ReadMessage()
-		if err != nil {
-			log.Fatalf("failed to read message from connected client: %v", err)
-		}
-
-		var args []string
-		if err := json.Unmarshal(argsJSON, &args); err != nil {
-			log.Fatalf("failed to unmarshal json args: %v", err)
-		}
-
-		app.handleCommandLineFromFromOtherInstance(args)
-	})
-	if err != nil {
-		log.Fatalf("failed to register unique application instance: %v", err)
-	}
-
-	log.Printf("created named pipe server for communication with other mpvrc instances")
-
-	go func() {
-		server.Serve()
-	}()
-}
-
 func main() {
-	if redirectToExistingApplicationInstance() {
+	app, ok := NewApp()
+	if !ok {
 		return
-	}
-
-	app := NewApp()
-
-	registerUniqueApplicationInstance(app)
-
-	args := []string{"--force-window", "--idle", "--input-ipc-server=mpvsocket"}
-	if len(os.Args) > 1 {
-		args = append(args, os.Args[1])
-	}
-
-	cmd := exec.Command("C:/soft/mpv/mpv.exe", args...)
-	if err := cmd.Start(); err != nil {
-		log.Fatalf("failed to start cmd: %v", err)
-	}
-
-	if err := app.ConnectToMPV(500 * time.Millisecond); err != nil {
-		log.Printf("failed to connect to mpv after startup: %v", err)
-	} else {
-		log.Printf("connected to mpv after startup")
 	}
 
 	h := http.NewServeMux()
@@ -283,7 +208,6 @@ func main() {
 		}
 	}()
 
-	quit := make(chan struct{})
 	go func() {
 		// Wait for Ctrl+C (SIGINT)
 		sig := make(chan os.Signal, 1)
@@ -296,19 +220,11 @@ func main() {
 		if err := srv.Shutdown(ctx); err != nil {
 			fmt.Printf("HTTP server Shutdown: %v\n", err)
 		}
+		app.RequestQuit()
 		// mpv.Disconnect()
-		close(quit)
 	}()
 
-	<-quit
-
-	fmt.Println("Waiting for MPV to exit...")
-
-	if err := cmd.Wait(); err != nil {
-		log.Printf("failed to wait for mpv to close: %v", err)
-	}
-
-	fmt.Println("Exiting application...")
+	<-app.Done()
 }
 
 func handleError(w http.ResponseWriter, err error) {
