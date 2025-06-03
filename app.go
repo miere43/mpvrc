@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"reflect"
 	"slices"
 	"sync"
@@ -137,6 +139,7 @@ type App struct {
 
 	quit    bool
 	quitApp chan struct{}
+	server  *httpServer
 }
 
 type AppEventListener struct {
@@ -155,6 +158,7 @@ func NewApp() (*App, bool) {
 		},
 		quitApp: make(chan struct{}),
 	}
+	app.server = newHttpServer(app)
 
 	if app.redirectToExistingApplicationInstance() {
 		return nil, false
@@ -162,6 +166,8 @@ func NewApp() (*App, bool) {
 
 	app.registerUniqueApplicationInstance()
 	app.startMPV()
+	app.startHttpServer()
+	app.installInterruptHandler()
 
 	go app.handleEvents()
 	return app, true
@@ -202,6 +208,28 @@ func (app *App) startMPV() {
 			log.Printf("failed to wait for mpv to close: %v", err)
 		}
 		app.RequestQuit()
+	}()
+}
+
+func (app *App) startHttpServer() {
+	go func() {
+		if err := app.server.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("failed to start HTTP server: %v", err)
+		}
+	}()
+}
+
+func (app *App) installInterruptHandler() {
+	go func() {
+		// Wait for Ctrl+C (SIGINT)
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt)
+		<-sig
+
+		app.server.Shutdown()
+
+		app.RequestQuit()
+		// mpv.Disconnect()
 	}()
 }
 

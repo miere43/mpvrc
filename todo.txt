@@ -1,1 +1,2 @@
 - switch audio output device
+- add favicon.ico for web server
