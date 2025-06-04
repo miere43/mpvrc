@@ -19,10 +19,16 @@ import (
 type httpServer struct {
 	srv         *http.Server
 	app         *App
+	appDir      string
 	shutdownSSE chan struct{}
 }
 
 func newHttpServer(app *App) *httpServer {
+	exePath, err := os.Executable()
+	if err != nil {
+		log.Fatalf("failed to get current executable path: %v", err)
+	}
+
 	h := http.NewServeMux()
 	s := &httpServer{
 		srv: &http.Server{
@@ -30,10 +36,12 @@ func newHttpServer(app *App) *httpServer {
 			Handler: h,
 		},
 		app:         app,
+		appDir:      filepath.Dir(exePath),
 		shutdownSSE: make(chan struct{}),
 	}
 
 	h.HandleFunc("GET /", s.index)
+	h.HandleFunc("GET /favicon.png", s.favicon)
 	h.HandleFunc("GET /events", s.events)
 	h.HandleFunc("POST /command", s.command)
 	h.HandleFunc("GET /file-system", s.fileSystem)
@@ -56,13 +64,7 @@ func (s *httpServer) index(w http.ResponseWriter, r *http.Request) {
 		log.Printf("failed to connect to MPV: %v", err)
 	}
 
-	exePath, err := os.Executable()
-	if err != nil {
-		s.handleError(w, err)
-		return
-	}
-
-	source, err := os.ReadFile(filepath.Join(filepath.Dir(exePath), "index.html"))
+	source, err := os.ReadFile(filepath.Join(s.appDir, "index.html"))
 	if err != nil {
 		s.handleError(w, err)
 		return
@@ -83,6 +85,18 @@ func (s *httpServer) index(w http.ResponseWriter, r *http.Request) {
 		s.handleError(w, err)
 		return
 	}
+}
+
+func (s *httpServer) favicon(w http.ResponseWriter, r *http.Request) {
+	// TODO: extract icon from embed resources
+	source, err := os.ReadFile(filepath.Join(s.appDir, "winres/icon_256.png"))
+	if err != nil {
+		s.handleError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/png")
+	w.Write(source)
 }
 
 func (s *httpServer) events(w http.ResponseWriter, r *http.Request) {
