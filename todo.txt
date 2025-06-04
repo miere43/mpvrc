@@ -1,3 +1,2 @@
 - switch audio output device
 - add favicon.ico for web server
-- subsystem=windows (remove console)

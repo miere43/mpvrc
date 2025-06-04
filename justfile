@@ -9,7 +9,8 @@ build:
     go build
 
 # build release executable
-build-release: _embed-resources build
+build-release: _embed-resources
+    go build -ldflags -H=windowsgui
 
 _embed-resources:
     go-winres make
