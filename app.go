@@ -165,11 +165,12 @@ func NewApp() (*App, bool) {
 	}
 
 	app.registerUniqueApplicationInstance()
+
+	go app.handleEvents()
 	app.startMPV()
 	app.startHttpServer()
 	app.installInterruptHandler()
 
-	go app.handleEvents()
 	return app, true
 }
 
