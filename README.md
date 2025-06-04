@@ -15,22 +15,14 @@ Browsed-based remote control application for [mpv](https://mpv.io/) for Windows.
 ## Build requirements
 
 - [Go 1.24.1](https://go.dev/dl/)
-- [just](https://github.com/casey/just/releases) (optional)
-- [go-winres](https://github.com/tc-hib/go-winres/releases) (optional, used to add icon to the executable)
+- [go-winres](https://github.com/tc-hib/go-winres/releases) (used to add icon to the executable)
 
 ## Usage
 
-1. Compile executable with [just](https://github.com/casey/just/releases):
+1. Compile executable:
 
 ```powershell
-just build-release
-```
-
-or manually:
-
-```powershell
-go-winres make # (if you have 'go-winres' installed)
-go build -ldflags -H=windowsgui
+.\make.ps1 build-release
 ```
 
 2. Use `mpvrc.exe` to open media files. It will launch HTTP server for remote control and `mpv`:
