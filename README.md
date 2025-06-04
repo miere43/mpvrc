@@ -15,7 +15,6 @@ Browsed-based remote control application for [mpv](https://mpv.io/) for Windows.
 ## Build requirements
 
 - [Go 1.24.1](https://go.dev/dl/)
-- [go-winres](https://github.com/tc-hib/go-winres/releases) (used to add icon to the executable)
 
 ## Usage
 

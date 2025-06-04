@@ -4,12 +4,19 @@ param(
     [string]$Task = "run"
 )
 
-function Build {
-    go build .
+function Error-Check {
+    param(
+        [string]$Message
+    )
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "go build failed." -ForegroundColor Red
+        Write-Host $Message -ForegroundColor Red
         exit $LASTEXITCODE
     }
+}
+
+function Build {
+    go build ./cmd/mpvrc
+    Error-Check "build failed."
 }
 
 function Run {
@@ -17,22 +24,19 @@ function Run {
     .\mpvrc.exe
 }
 
-function BuildRelease {
-    go build -ldflags -H=windowsgui
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "go build failed." -ForegroundColor Red
-        exit $LASTEXITCODE
-    }
+function Build-Release {
+    go build ./cmd/build
+    Error-Check "build helper executable failed."
     
-    go-winres make
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "go-winres failed." -ForegroundColor Red
-        exit $LASTEXITCODE
-    }
+    .\build.exe
+    Error-Check "build helper failed."
+
+    go build -ldflags -H=windowsgui ./cmd/mpvrc
+    Error-Check "build release executable failed."
 }
 
 switch ($Task) {
     "build" { Build }
     "run" { Run }
-    "build-release" { BuildRelease }
+    "build-release" { Build-Release }
 }
