@@ -1,1 +1,4 @@
 - switch audio output device
+- delete "just" dependency: replace with "powershell"
+- delete "go-winres" dependency: use it as library
+- remove C:\soft\mpv\mpv.exe hardcoded path
