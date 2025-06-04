@@ -1,6 +1,6 @@
 param(
     [Parameter(Position=0)]
-    [ValidateSet("build", "run", "build-release")]
+    [ValidateSet("build", "run", "build-release", "test")]
     [string]$Task = "run"
 )
 
@@ -24,6 +24,11 @@ function Run {
     .\mpvrc.exe
 }
 
+function Test {
+    go test ./...
+    Error-Check "go test failed."
+}
+
 function Build-Release {
     go build ./cmd/build
     Error-Check "build helper executable failed."
@@ -39,4 +44,5 @@ switch ($Task) {
     "build" { Build }
     "run" { Run }
     "build-release" { Build-Release }
+    "test" { Test }
 }
