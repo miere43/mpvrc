@@ -36,7 +36,7 @@ function Build-Release {
     .\build.exe
     Error-Check "build helper failed."
 
-    go build -ldflags -H=windowsgui ./cmd/mpvrc
+    go build -ldflags "-H=windowsgui -s -w" -trimpath ./cmd/mpvrc
     Error-Check "build release executable failed."
 }
 
