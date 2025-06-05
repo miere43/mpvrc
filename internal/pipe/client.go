@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/miere43/mpvrc/internal/util"
 	"github.com/miere43/mpvrc/internal/winapi"
 )
 
@@ -96,7 +97,7 @@ func (c *Client) readFromPipe(ctx context.Context) {
 
 	event, err := winapi.CreateEventW(0, false, false)
 	if err != nil {
-		panic(fmt.Sprintf("failed to create event: %v", err))
+		util.Fatal("failed to create event", "err", err)
 	}
 	defer syscall.CloseHandle(event)
 
@@ -109,7 +110,7 @@ func (c *Client) readFromPipe(ctx context.Context) {
 	for {
 		if err = syscall.ReadFile(c.pipeHandle, buffer[:], nil, overlapped); err != nil {
 			if !errors.Is(err, syscall.ERROR_IO_PENDING) {
-				log.Printf("failed to read from pipe: %v", err)
+				slog.Error("failed to read from pipe", "err", err)
 				c.cancel()
 				return
 			}
@@ -118,7 +119,7 @@ func (c *Client) readFromPipe(ctx context.Context) {
 		go func() {
 			bytesRead, err := winapi.GetOverlappedResult(c.pipeHandle, overlapped, true)
 			if err != nil {
-				log.Printf("failed to get overlapped result: %v\n", err)
+				slog.Error("failed to get overlapped result", "err", err)
 				c.cancel()
 				return
 			}
@@ -126,7 +127,7 @@ func (c *Client) readFromPipe(ctx context.Context) {
 			responseJSON := make([]byte, int(bytesRead))
 			copy(responseJSON, buffer[:bytesRead])
 
-			fmt.Printf("Read operation completed, %d bytes read: %s\n", bytesRead, string(responseJSON))
+			slog.Debug("Read operation completed", "bytesRead", bytesRead, "result", string(responseJSON))
 
 			c.reads <- responseJSON
 			overlappedDone <- struct{}{}
@@ -146,7 +147,7 @@ func (c *Client) writeToPipe(ctx context.Context) {
 
 	event, err := winapi.CreateEventW(0, false, false)
 	if err != nil {
-		panic(fmt.Sprintf("failed to create event: %v", err))
+		util.Fatal("failed to create event", "err", err)
 	}
 	defer syscall.CloseHandle(event)
 
@@ -158,20 +159,20 @@ func (c *Client) writeToPipe(ctx context.Context) {
 	for {
 		select {
 		case write := <-c.writes:
-			fmt.Printf("Preparing to write %d bytes to pipe: %s\n", len(write), string(write))
+			slog.Debug("Preparing to write to pipe", "writeBytes", len(write), "data", string(write))
 			if err = syscall.WriteFile(c.pipeHandle, write, nil, overlapped); err != nil {
-				panic(fmt.Sprintf("Failed to write to pipe: %v", err))
+				util.Fatal("failed to write to pipe", "err", err)
 			}
 
-			fmt.Printf("Write operation initiated, waiting for completion...\n")
+			slog.Debug("Write operation initiated, waiting for completion...")
 
 			var bytesWritten uint32
 			go func() {
 				bytesWritten, err = winapi.GetOverlappedResult(c.pipeHandle, overlapped, true)
 				if err != nil {
-					panic(fmt.Sprintf("failed to get overlapped result: %v", err))
+					util.Fatal("failed to get overlapped result", "err", err)
 				}
-				fmt.Printf("Write operation completed, %d bytes written\n", bytesWritten)
+				slog.Debug("Write operation completed", "bytesWritten", bytesWritten)
 				overlappedDone <- struct{}{}
 			}()
 

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -17,6 +17,7 @@ import (
 
 	"github.com/miere43/mpvrc/internal/mpv"
 	"github.com/miere43/mpvrc/internal/pipe"
+	"github.com/miere43/mpvrc/internal/util"
 )
 
 type Globals struct {
@@ -39,7 +40,7 @@ type GlobalFieldInfo struct {
 func (g *Globals) SetFieldValue(info GlobalFieldInfo, value any) (changed bool) {
 	reflectValue := reflect.ValueOf(value)
 	if value == nil {
-		log.Printf("Globals.SetFieldValue: got nil value for %q, using default value", info.MPVName)
+		slog.Error("Globals.SetFieldValue: got nil value for property, using default value", "property", info.MPVName)
 		reflectValue = reflect.New(info.Type).Elem()
 	}
 
@@ -72,7 +73,7 @@ func (g *Globals) FieldValue(info GlobalFieldInfo) any {
 func (g *Globals) FormatDuration(value any) string {
 	duration, ok := value.(float64)
 	if !ok {
-		log.Printf("unexpected type for duration: %T", value)
+		slog.Error("unexpected type for duration", "type", fmt.Sprintf("%T", value))
 	}
 	return mpv.FormatDuration(duration)
 }
@@ -196,17 +197,17 @@ func (app *App) startMPV() {
 
 	cmd := exec.Command("C:/soft/mpv/mpv.exe", args...)
 	if err := cmd.Start(); err != nil {
-		log.Fatalf("failed to start cmd: %v", err)
+		util.Fatal("failed to start cmd", "err", err)
 	}
 
 	if err := app.ConnectToMPV(500 * time.Millisecond); err != nil {
-		log.Fatalf("failed to connect to mpv after startup: %v", err)
+		util.Fatal("failed to connect to mpv after startup", "err", err)
 	}
 
 	go func() {
-		log.Printf("waiting for mpv to exit...")
+		slog.Info("waiting for mpv to exit...")
 		if err := cmd.Wait(); err != nil {
-			log.Printf("failed to wait for mpv to close: %v", err)
+			slog.Error("failed to wait for mpv to close", "err", err)
 		}
 		app.RequestQuit()
 	}()
@@ -215,7 +216,7 @@ func (app *App) startMPV() {
 func (app *App) startHttpServer() {
 	go func() {
 		if err := app.server.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("failed to start HTTP server: %v", err)
+			util.Fatal("failed to start HTTP server", "err", err)
 		}
 	}()
 }
@@ -237,26 +238,26 @@ func (app *App) installInterruptHandler() {
 func (app *App) redirectToExistingApplicationInstance() bool {
 	client, err := pipe.Dial(uniqueInstancePipeName, 0, nil)
 	if errors.Is(err, syscall.ERROR_FILE_NOT_FOUND) {
-		log.Print("existing mpvrc instance not found, continuing with normal execution")
+		slog.Debug("existing mpvrc instance not found, continuing with normal execution")
 		return false
 	} else if err != nil {
-		log.Fatalf("failed to connect to existing mpvrc instance: %v", err)
+		util.Fatal("failed to connect to existing mpvrc instance", "err", err)
 	}
 	defer func() {
 		if err := client.Close(); err != nil {
-			log.Printf("failed to close pipe to existing mpvrc instance: %v", err)
+			slog.Error("failed to close pipe to existing mpvrc instance", "err", err)
 		}
 	}()
 
-	log.Printf("found existing mpvrc instance, redirecting command line args to it: %v", os.Args)
+	slog.Info("found existing mpvrc instance, redirecting command line args to it", "args", os.Args)
 
 	argsJSON, err := json.Marshal(os.Args)
 	if err != nil {
-		log.Fatalf("failed to marshal args: %v", err)
+		util.Fatal("failed to marshal args", "err", err)
 	}
 
 	if err := client.Write(argsJSON); err != nil {
-		log.Fatalf("failed to send data to existing mpvrc instance: %v", err)
+		util.Fatal("failed to send data to existing mpvrc instance", "err", err)
 	}
 	return true
 }
@@ -265,21 +266,21 @@ func (app *App) registerUniqueApplicationInstance() {
 	server, err := pipe.NewServer(uniqueInstancePipeName, func(client *pipe.ConnectedClient) {
 		argsJSON, err := client.ReadMessage()
 		if err != nil {
-			log.Fatalf("failed to read message from connected client: %v", err)
+			util.Fatal("failed to read message from connected client", "err", err)
 		}
 
 		var args []string
 		if err := json.Unmarshal(argsJSON, &args); err != nil {
-			log.Fatalf("failed to unmarshal json args: %v", err)
+			util.Fatal("failed to unmarshal json args", "err", err)
 		}
 
 		app.handleCommandLineFromFromOtherInstance(args)
 	})
 	if err != nil {
-		log.Fatalf("failed to register unique application instance: %v", err)
+		util.Fatal("failed to register unique application instance", "err", err)
 	}
 
-	log.Printf("created named pipe server for communication with other mpvrc instances")
+	slog.Info("created named pipe server for communication with other mpvrc instances")
 
 	go func() {
 		server.Serve()
@@ -295,7 +296,7 @@ func (app *App) handleCommandLineFromFromOtherInstance(args []string) {
 
 	_, err := app.SendCommand([]any{"loadfile", loadfile}, false)
 	if err != nil {
-		log.Printf("failed to send loadfile command to mpv: %v", err)
+		slog.Error("failed to send loadfile command to mpv", "err", err)
 	}
 }
 
@@ -315,14 +316,14 @@ func (app *App) handleEvent(event any) {
 		app.setMPVFieldValue(e.Name, e.Data)
 
 	default:
-		log.Printf("handleEvent: unhandled event type: %v", e)
+		slog.Error("handleEvent: unhandled event type", "eventType", e)
 	}
 }
 
 func (app *App) setMPVFieldValue(mpvName string, value any) {
 	field, ok := app.globals.GetFieldByMPVName(mpvName)
 	if !ok {
-		log.Printf("setMPVFieldValue: unknown property name: %q", mpvName)
+		slog.Error("setMPVFieldValue: unknown property name", "property", mpvName)
 		return
 	}
 
@@ -348,7 +349,7 @@ func (app *App) makeGlobalPropertyEvent(propertyName string, value any) globalPr
 func (app *App) sendEvent(event any) {
 	eventJSON, err := json.Marshal(event)
 	if err != nil {
-		log.Printf("sendEvent: failed to marshal event: %v", err)
+		slog.Error("sendEvent: failed to marshal event", "err", err)
 		return
 	}
 
@@ -362,14 +363,13 @@ func (app *App) connectToMPVCore(timeout time.Duration) (bool, error) {
 	defer app.m.Unlock()
 
 	if app.mpv != nil {
-		log.Printf("ConnectToMPV: mpv was already connected")
-		// Already connected
+		slog.Debug("ConnectToMPV: mpv was already connected")
 		return false, nil
 	}
 
 	mpv, err := mpv.Dial(app.mpvEvents, timeout)
 	if err != nil {
-		return false, fmt.Errorf("failed to connect to mpv: %v", err)
+		return false, fmt.Errorf("failed to connect to mpv: %w", err)
 	}
 
 	app.mpv = mpv
@@ -446,7 +446,7 @@ func (app *App) NewEventListener() *AppEventListener {
 	}
 	app.eventListeners = append(app.eventListeners, listener)
 
-	log.Printf("created event listener %d", listener.ID)
+	slog.Debug("created event listener", "id", listener.ID)
 	return listener
 }
 
@@ -462,5 +462,5 @@ func (app *App) CloseEventListener(closeListener *AppEventListener) {
 	app.eventListeners = slices.Delete(app.eventListeners, index, index+1)
 	close(closeListener.Events)
 
-	log.Printf("closed event listener %d", closeListener.ID)
+	slog.Debug("closed event listener", "id", closeListener.ID)
 }

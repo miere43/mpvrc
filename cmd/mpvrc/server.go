@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/miere43/mpvrc/internal/util"
 )
 
 type httpServer struct {
@@ -26,7 +28,7 @@ type httpServer struct {
 func newHttpServer(app *App) *httpServer {
 	exePath, err := os.Executable()
 	if err != nil {
-		log.Fatalf("failed to get current executable path: %v", err)
+		util.Fatal("failed to get current executable path", "err", err)
 	}
 
 	h := http.NewServeMux()
@@ -50,18 +52,18 @@ func newHttpServer(app *App) *httpServer {
 }
 
 func (s *httpServer) Shutdown() {
-	fmt.Println("Shutting down HTTP server...")
+	slog.Debug("shutting down HTTP server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 	close(s.shutdownSSE)
 	if err := s.srv.Shutdown(ctx); err != nil {
-		fmt.Printf("HTTP server Shutdown: %v\n", err)
+		slog.Error("failed to shutdown HTTP server", "err", err)
 	}
 }
 
 func (s *httpServer) index(w http.ResponseWriter, r *http.Request) {
 	if err := s.app.ConnectToMPV(0); err != nil {
-		log.Printf("failed to connect to MPV: %v", err)
+		slog.Error("failed to connect to mpv", "err", err)
 	}
 
 	source, err := os.ReadFile(filepath.Join(s.appDir, "index.html"))
@@ -118,12 +120,12 @@ func (s *httpServer) events(w http.ResponseWriter, r *http.Request) {
 			w.(http.Flusher).Flush()
 
 		case <-r.Context().Done():
-			log.Printf("Context done!")
+			slog.Debug("Context done!")
 			loop = false
 			s.app.CloseEventListener(listener)
 
 		case <-s.shutdownSSE:
-			log.Printf("Shutdown SSE!")
+			slog.Debug("Shutdown SSE!")
 			loop = false
 			s.app.CloseEventListener(listener)
 		}
@@ -253,13 +255,13 @@ func (s *httpServer) writeJSON(w http.ResponseWriter, data any) {
 func (s *httpServer) isHiddenFile(path string) bool {
 	pathW, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
-		log.Printf("failed to convert path to utf16: %v", err)
+		slog.Error("failed to convert path to utf16", "err", err)
 		return false
 	}
 
 	attrs, err := syscall.GetFileAttributes(pathW)
 	if err != nil {
-		log.Printf("failed to get win32 file attributes: %v", err)
+		slog.Error("failed to get win32 file attributes", "err", err)
 		return false
 	}
 

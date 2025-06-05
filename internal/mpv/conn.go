@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/miere43/mpvrc/internal/pipe"
+	"github.com/miere43/mpvrc/internal/util"
 )
 
 type MpvCommand struct {
@@ -81,12 +82,12 @@ func (mpv *Conn) Context() context.Context {
 
 func (mpv *Conn) Disconnect() {
 	if mpv.conn == nil {
-		log.Printf("Disconnect: mpv already disconnected")
+		slog.Debug("Disconnect: mpv already disconnected")
 		return
 	}
 
 	if err := mpv.conn.Close(); err != nil {
-		log.Printf("failed to close MPV named pipe: %v", err)
+		slog.Error("failed to close mpv named pipe", "err", err)
 	}
 	close(mpv.reads)
 	mpv.wg.Wait()
@@ -102,7 +103,7 @@ func (mpv *Conn) setResponse(requestID int32, response MpvResponse) {
 	mpv.waitingForResponseMutex.Lock()
 	cmd, ok := mpv.waitingForResponse[requestID]
 	if !ok {
-		fmt.Printf("Got response for unknown request ID %d\n", requestID)
+		slog.Warn("Got response for unknown request ID", "requestId", requestID)
 		return
 	}
 
@@ -153,7 +154,7 @@ func (mpv *Conn) SendCommand(command []any, async bool) (MpvResponse, error) {
 func (mpv *Conn) ObserveProperty(property string) {
 	_, err := mpv.SendCommand([]any{"observe_property", mpv.nextPropertyID.Add(1), property}, false)
 	if err != nil {
-		log.Printf("failed to observe property \"%v\": %v", property, err)
+		slog.Error("failed to observe property", "property", property, "err", err)
 	}
 }
 
@@ -182,14 +183,14 @@ func (mpv *Conn) readResponses() {
 				if errors.Is(err, ErrUnknownEvent) {
 					var response MpvResponse
 					if err := json.Unmarshal(completeRead, &response); err != nil {
-						panic(fmt.Sprintf("unmarshal response: %v \"%v\"", err, string(completeRead)))
+						util.Fatal("unmarshal response", "err", err, "response", string(completeRead))
 					}
 
 					if response.RequestID != 0 {
 						mpv.setResponse(response.RequestID, response)
 					}
 				} else if err != nil {
-					log.Printf("failed to parse MPV event: %v \"%v\"", err, string(completeRead))
+					slog.Error("failed to parse MPV event", "err", err, "event", string(completeRead))
 				} else {
 					mpv.events <- event
 				}

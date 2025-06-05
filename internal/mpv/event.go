@@ -25,14 +25,14 @@ func ParseEvent(event []byte) (any, error) {
 		Event string `json:"event"`
 	}
 	if err := json.Unmarshal(event, &header); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal mpv event header: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal mpv event header: %w", err)
 	}
 
 	switch header.Event {
 	case "property-change":
 		var change PropertyChange
 		if err := json.Unmarshal(event, &change); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal property-change event: %v", err)
+			return nil, fmt.Errorf("failed to unmarshal property-change event: %w", err)
 		}
 		return change, nil
 	}

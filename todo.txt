@@ -1,2 +1,5 @@
 - switch audio output device
+- switch subtitles
+- switch audio track
+- move fullscreen button to top right
 - remove C:\soft\mpv\mpv.exe hardcoded path

@@ -3,9 +3,10 @@ package pipe
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"syscall"
 
+	"github.com/miere43/mpvrc/internal/util"
 	"github.com/miere43/mpvrc/internal/winapi"
 )
 
@@ -55,7 +56,7 @@ func (s *Server) Serve() {
 	for {
 		client, err := s.connectClient()
 		if err != nil {
-			log.Fatalf("pipe server failed to connect client: %v", err)
+			util.Fatal("pipe server failed to connect client", "err", err)
 		}
 
 		go func(client *ConnectedClient) {
@@ -74,15 +75,15 @@ type ConnectedClient struct {
 func (s *Server) connectClient() (*ConnectedClient, error) {
 	var clientPipeHandle = s.pipeHandle
 	if err := winapi.ConnectNamedPipe(clientPipeHandle, nil); err != nil && !errors.Is(err, winapi.ERROR_PIPE_CONNECTED) {
-		return nil, fmt.Errorf("wait for client failed: %v", err)
+		return nil, fmt.Errorf("wait for client failed: %w", err)
 	}
 
-	log.Printf("received new named pipe client")
+	slog.Info("received new named pipe client")
 
 	s.pipeHandle = 0
 	newPipeHandle, err := s.createPipe(false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create pipe for next client connection: %v", err)
+		return nil, fmt.Errorf("failed to create pipe for next client connection: %w", err)
 	}
 	s.pipeHandle = newPipeHandle
 
@@ -98,7 +99,6 @@ func (s *ConnectedClient) ReadMessage() ([]byte, error) {
 
 	for {
 		if err := syscall.ReadFile(s.pipeHandle, buffer[:], &bytesRead, nil); err != nil {
-			log.Printf("read file %d", bytesRead)
 			if errors.Is(err, syscall.ERROR_MORE_DATA) {
 				message = append(message, buffer[:bytesRead]...)
 				continue
