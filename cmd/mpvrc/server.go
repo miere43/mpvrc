@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/miere43/mpvrc/internal/util"
+	"github.com/miere43/mpvrc/winres"
 )
 
 type httpServer struct {
@@ -41,7 +42,7 @@ func newHttpServer(app *App) *httpServer {
 		shutdownSSE: make(chan struct{}),
 	}
 
-	h.HandleFunc("GET /", s.index)
+	h.Handle("GET /", s.index())
 	h.HandleFunc("GET /favicon.png", s.favicon)
 	h.HandleFunc("GET /events", s.events)
 	h.HandleFunc("POST /command", s.command)
@@ -60,41 +61,12 @@ func (s *httpServer) Shutdown() {
 	}
 }
 
-func (s *httpServer) index(w http.ResponseWriter, r *http.Request) {
-	s.cors(w)
-
-	if err := s.app.ConnectToMPV(0); err != nil {
-		slog.Error("failed to connect to mpv", "err", err)
-	}
-
-	source, err := os.ReadFile(filepath.Join(s.appDir, "front/dist/index.html"))
-	if err != nil {
-		s.handleError(w, err)
-		return
-	}
-
-	w.Write(source)
-}
-
 func (s *httpServer) favicon(w http.ResponseWriter, r *http.Request) {
-	s.cors(w)
-
-	// TODO: extract icon from embed resources
-	source, err := os.ReadFile(filepath.Join(s.appDir, "winres/icon_256.png"))
-	if err != nil {
-		s.handleError(w, err)
-		return
-	}
-
 	w.Header().Set("Content-Type", "image/png")
-	w.Write(source)
+	w.Write(winres.Icon)
 }
 
 func (s *httpServer) events(w http.ResponseWriter, r *http.Request) {
-	// Set CORS headers to allow all origins. You may want to restrict this to specific origins in a production environment.
-	s.cors(w)
-	w.Header().Set("Access-Control-Expose-Headers", "Content-Type")
-
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -133,8 +105,6 @@ func (s *httpServer) events(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *httpServer) command(w http.ResponseWriter, r *http.Request) {
-	s.cors(w)
-
 	commandJSON := r.FormValue("command")
 	var command []any
 	if err := json.Unmarshal([]byte(commandJSON), &command); err != nil {
@@ -152,8 +122,6 @@ func (s *httpServer) command(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *httpServer) fileSystem(w http.ResponseWriter, r *http.Request) {
-	s.cors(w)
-
 	type Entry struct {
 		Name  string `json:"name"`
 		Path  string `json:"path"`
@@ -273,8 +241,4 @@ func (s *httpServer) isHiddenFile(path string) bool {
 	hidden := (attrs & syscall.FILE_ATTRIBUTE_HIDDEN) != 0
 
 	return hidden
-}
-
-func (s *httpServer) cors(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 }

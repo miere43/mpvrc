@@ -1,4 +1,4 @@
-import { createSignal, For, Setter, Show, type Component } from 'solid-js';
+import { createSignal, For, onCleanup, Setter, Show, type Component } from 'solid-js';
 
 import styles from './App.module.css';
 
@@ -60,6 +60,10 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
 
         applyEvent(JSON.parse(event.data));
     };
+
+    onCleanup(() => {
+        eventSource.close();
+    });
 
     function command(args: any[]): Promise<Response> {
         console.log('command args', args);

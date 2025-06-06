@@ -32,11 +32,11 @@ function Test {
 function Build-Release {
     go build ./cmd/build
     Error-Check "build helper executable failed."
-    
+
     .\build.exe
     Error-Check "build helper failed."
 
-    go build -ldflags "-H=windowsgui -s -w" -trimpath ./cmd/mpvrc
+    go build -tags index_embed -ldflags "-H=windowsgui -s -w" -trimpath ./cmd/mpvrc
     Error-Check "build release executable failed."
 }
 
