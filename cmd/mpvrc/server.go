@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
@@ -62,34 +61,24 @@ func (s *httpServer) Shutdown() {
 }
 
 func (s *httpServer) index(w http.ResponseWriter, r *http.Request) {
+	s.cors(w)
+
 	if err := s.app.ConnectToMPV(0); err != nil {
 		slog.Error("failed to connect to mpv", "err", err)
 	}
 
-	source, err := os.ReadFile(filepath.Join(s.appDir, "index.html"))
+	source, err := os.ReadFile(filepath.Join(s.appDir, "front/dist/index.html"))
 	if err != nil {
 		s.handleError(w, err)
 		return
 	}
 
-	t, err := template.New("index.html").Parse(string(source))
-	if err != nil {
-		s.handleError(w, err)
-		return
-	}
-
-	err = t.Execute(w, struct {
-		StartupEvents []any
-	}{
-		StartupEvents: s.app.StartupEvents(),
-	})
-	if err != nil {
-		s.handleError(w, err)
-		return
-	}
+	w.Write(source)
 }
 
 func (s *httpServer) favicon(w http.ResponseWriter, r *http.Request) {
+	s.cors(w)
+
 	// TODO: extract icon from embed resources
 	source, err := os.ReadFile(filepath.Join(s.appDir, "winres/icon_256.png"))
 	if err != nil {
@@ -103,7 +92,7 @@ func (s *httpServer) favicon(w http.ResponseWriter, r *http.Request) {
 
 func (s *httpServer) events(w http.ResponseWriter, r *http.Request) {
 	// Set CORS headers to allow all origins. You may want to restrict this to specific origins in a production environment.
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	s.cors(w)
 	w.Header().Set("Access-Control-Expose-Headers", "Content-Type")
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -111,6 +100,17 @@ func (s *httpServer) events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	listener := s.app.NewEventListener()
+
+	for _, event := range s.app.StartupEvents() {
+		eventJSON, err := json.Marshal(event)
+		if err != nil {
+			slog.Error("failed to marshal startup event", "err", err, "event", event)
+			continue
+		}
+
+		fmt.Fprintf(w, "data: %s\n\n", eventJSON)
+	}
+	w.(http.Flusher).Flush()
 
 	loop := true
 	for loop {
@@ -133,6 +133,8 @@ func (s *httpServer) events(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *httpServer) command(w http.ResponseWriter, r *http.Request) {
+	s.cors(w)
+
 	commandJSON := r.FormValue("command")
 	var command []any
 	if err := json.Unmarshal([]byte(commandJSON), &command); err != nil {
@@ -150,6 +152,8 @@ func (s *httpServer) command(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *httpServer) fileSystem(w http.ResponseWriter, r *http.Request) {
+	s.cors(w)
+
 	type Entry struct {
 		Name  string `json:"name"`
 		Path  string `json:"path"`
@@ -239,6 +243,7 @@ func (s *httpServer) fileSystem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *httpServer) handleError(w http.ResponseWriter, err error) {
+	slog.Error("failed to handle http", "err", err)
 	w.WriteHeader(http.StatusBadRequest)
 	w.Write([]byte(err.Error()))
 }
@@ -268,4 +273,8 @@ func (s *httpServer) isHiddenFile(path string) bool {
 	hidden := (attrs & syscall.FILE_ATTRIBUTE_HIDDEN) != 0
 
 	return hidden
+}
+
+func (s *httpServer) cors(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 }

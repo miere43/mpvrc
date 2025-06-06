@@ -432,6 +432,8 @@ func (app *App) StartupEvents() []any {
 		events = append(events, app.makeGlobalPropertyEvent(field.SerializedName, app.globals.FieldValue(field)))
 	}
 
+	events = append(events, app.makeGlobalPropertyEvent("ready", true))
+
 	return events
 }
 
