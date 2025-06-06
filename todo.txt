@@ -5,6 +5,4 @@
 - remove C:\soft\mpv\mpv.exe hardcoded path
 - seek to chapter marker
 - select file: start in directory from last file even if it was closed
-- ctrl+c should close mpv
 - update README.md with new build requirements
-- "inFullscreen" can show incorrect value (for example when user used F11 to enter fullscreen)

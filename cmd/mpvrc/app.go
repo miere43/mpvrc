@@ -141,6 +141,8 @@ type App struct {
 	quit    bool
 	quitApp chan struct{}
 	server  *httpServer
+
+	mpvCmd *exec.Cmd
 }
 
 type AppEventListener struct {
@@ -179,10 +181,20 @@ func (app *App) RequestQuit() {
 	app.m.Lock()
 	defer app.m.Unlock()
 
-	if !app.quit {
-		app.quit = true
-		close(app.quitApp)
+	if app.quit {
+		return
 	}
+
+	app.quit = true
+
+	if app.mpvCmd != nil && app.mpvCmd.Process != nil {
+		// TODO: implement graceful exit, SendCommand(["run", "exit"]) doesn't work.
+		if err := app.mpvCmd.Process.Kill(); err != nil {
+			slog.Error("failed to kill mpv", "err", err)
+		}
+	}
+
+	close(app.quitApp)
 }
 
 func (app *App) Done() <-chan struct{} {
@@ -195,8 +207,8 @@ func (app *App) startMPV() {
 		args = append(args, os.Args[1])
 	}
 
-	cmd := exec.Command("C:/soft/mpv/mpv.exe", args...)
-	if err := cmd.Start(); err != nil {
+	app.mpvCmd = exec.Command("C:/soft/mpv/mpv.exe", args...)
+	if err := app.mpvCmd.Start(); err != nil {
 		util.Fatal("failed to start cmd", "err", err)
 	}
 
@@ -206,7 +218,7 @@ func (app *App) startMPV() {
 
 	go func() {
 		slog.Info("waiting for mpv to exit...")
-		if err := cmd.Wait(); err != nil {
+		if err := app.mpvCmd.Wait(); err != nil {
 			slog.Error("failed to wait for mpv to close", "err", err)
 		}
 		app.RequestQuit()
