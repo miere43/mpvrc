@@ -54,7 +54,7 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
         }
     }
 
-    const eventSource = new EventSource('http://localhost:8080/events');
+    const eventSource = new EventSource('/events');
     eventSource.onmessage = (event) => {
         console.log('RECV', event.data)
 
@@ -69,7 +69,7 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
         console.log('command args', args);
         const body = new FormData();
         body.append('command', JSON.stringify(args));
-        return fetch('http://localhost:8080/command', {
+        return fetch('/command', {
             method: 'POST',
             body: body,
         });
@@ -132,7 +132,7 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
     let filePicker: HTMLDialogElement | undefined;
 
     async function openFilePicker(): Promise<void> {
-        const response = await fetch(`http://localhost:8080/file-system?path=${encodeURIComponent(path())}&dir=true`);
+        const response = await fetch(`/file-system?path=${encodeURIComponent(path())}&dir=true`);
         const data = (await response.json()) as FileSystemResponse;
 
         setFilePickerPath(data.path);
@@ -143,7 +143,7 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
 
     async function pickFile(entry: FileSystemEntry): Promise<void> {
         if (entry.isDir) {
-            const response = await fetch(`http://localhost:8080/file-system?path=${encodeURIComponent(entry.path)}`);
+            const response = await fetch(`/file-system?path=${encodeURIComponent(entry.path)}`);
             const data = (await response.json()) as FileSystemResponse;
 
             setFilePickerPath(data.path);
@@ -222,7 +222,13 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
                             <h3 style="margin-top: 0">{filePickerPath()}</h3>
                             <ul>
                                 <For each={filePickerEntries()}>{entry =>
-                                    <li><a href="#" onClick={event => { event.preventDefault(); pickFile(entry); }}>{entry.name}</a></li>
+                                    <li>
+                                        <div
+                                            role="button"
+                                            class={styles.link}
+                                            onClick={event => { event.preventDefault(); pickFile(entry); }}
+                                        >{entry.name}</div>
+                                    </li>
                                 }</For>
                             </ul>
                         </div>
@@ -235,7 +241,13 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
                     </Show>
 
                     <div>Volume: {volume()}% | Speed: {speed()}</div>
-                    <div>Path: <a href="#" onClick={event => { event.preventDefault(); openFilePicker(); }}>{path() || 'No file selected'}</a></div>
+                    <div>
+                        Path: <div
+                            role="button"
+                            class={styles.link}
+                            onClick={event => { event.preventDefault(); openFilePicker(); }}
+                        >{path() || 'No file selected'}</div>
+                    </div>
                 </div>
             </Show>
         </Show>

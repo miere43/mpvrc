@@ -32,3 +32,9 @@
 .controls > button {
     font-size: 30px;
 }
+
+.link {
+    color: #c7cbff;
+    cursor: pointer;
+    display: inline;
+}
