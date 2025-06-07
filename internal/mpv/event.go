@@ -7,9 +7,9 @@ import (
 )
 
 type PropertyChange struct {
-	Id   int    `json:"id"`
-	Name string `json:"name"`
-	Data any    `json:"data"`
+	Id   int             `json:"id"`
+	Name string          `json:"name"`
+	Data json.RawMessage `json:"data"`
 }
 
 func (PropertyChange) Event() string {

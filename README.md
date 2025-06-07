@@ -1,6 +1,6 @@
 # mpv Remote Control
 
-Browsed-based remote control application for [mpv](https://mpv.io/) for Windows.
+Browser-based remote control application for [mpv](https://mpv.io/) for Windows.
 
 ![UI](screenshots/ui.png)
 

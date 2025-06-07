@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"reflect"
 	"slices"
 	"sync"
 	"syscall"
@@ -19,114 +18,6 @@ import (
 	"github.com/miere43/mpvrc/internal/pipe"
 	"github.com/miere43/mpvrc/internal/util"
 )
-
-type Globals struct {
-	PlaybackTime string  `json:"playbackTime" mpv:"playback-time" setter:"FormatDuration"`
-	Duration     string  `json:"duration" setter:"FormatDuration"`
-	Pause        bool    `json:"pause"`
-	Volume       float64 `json:"volume"`
-	Path         string  `json:"path"`
-	Speed        float64 `json:"speed"`
-}
-
-type GlobalFieldInfo struct {
-	Type           reflect.Type
-	SetterFunc     reflect.Value
-	SerializedName string
-	MPVName        string
-	Index          []int
-}
-
-func (g *Globals) SetFieldValue(info GlobalFieldInfo, value any) (changed bool) {
-	reflectValue := reflect.ValueOf(value)
-	if value == nil {
-		slog.Error("Globals.SetFieldValue: got nil value for property, using default value", "property", info.MPVName)
-		reflectValue = reflect.New(info.Type).Elem()
-	}
-
-	if info.SetterFunc.IsValid() {
-		result := info.SetterFunc.Call([]reflect.Value{reflectValue})
-		if len(result) != 1 {
-			panic(fmt.Sprintf("want single return value from setter, got %d", len(result)))
-		}
-		reflectValue = result[0]
-	}
-
-	fieldRef := reflect.ValueOf(g).Elem().FieldByIndex(info.Index)
-
-	newValue := reflectValue.Interface()
-	oldValue := fieldRef.Interface()
-
-	if newValue != oldValue {
-		fieldRef.Set(reflectValue)
-		changed = true
-	}
-
-	return
-}
-
-func (g *Globals) FieldValue(info GlobalFieldInfo) any {
-	r := reflect.ValueOf(g).Elem()
-	return r.FieldByIndex(info.Index).Interface()
-}
-
-func (g *Globals) FormatDuration(value any) string {
-	duration, ok := value.(float64)
-	if !ok {
-		slog.Error("unexpected type for duration", "type", fmt.Sprintf("%T", value))
-	}
-	return mpv.FormatDuration(duration)
-}
-
-func (g *Globals) getFieldByIndex(fieldIndex int) GlobalFieldInfo {
-	reflectG := reflect.ValueOf(g)
-	typeG := reflectG.Elem().Type()
-
-	field := typeG.Field(fieldIndex)
-
-	info := GlobalFieldInfo{
-		Type:           field.Type,
-		SerializedName: field.Tag.Get("json"),
-		Index:          field.Index,
-	}
-	if info.SerializedName == "" {
-		panic(fmt.Errorf("field %s must have json tag", field.Name))
-	}
-
-	info.MPVName = field.Tag.Get("mpv")
-	if info.MPVName == "" {
-		info.MPVName = info.SerializedName
-	}
-
-	if setterName := field.Tag.Get("setter"); setterName != "" {
-		info.SetterFunc = reflectG.MethodByName(setterName)
-		if !info.SetterFunc.IsValid() {
-			panic(fmt.Errorf("cannot find setter method %q for field %q", setterName, field.Name))
-		}
-	}
-	return info
-}
-
-func (g *Globals) GetFieldByMPVName(mpvName string) (GlobalFieldInfo, bool) {
-	typ := reflect.TypeOf(g).Elem()
-	for fieldIndex := range typ.NumField() {
-		info := g.getFieldByIndex(fieldIndex)
-		if info.MPVName == mpvName {
-			return info, true
-		}
-	}
-	return GlobalFieldInfo{}, false
-}
-
-func (g *Globals) Fields() []GlobalFieldInfo {
-	var fields []GlobalFieldInfo
-
-	typ := reflect.TypeOf(g).Elem()
-	for fieldIndex := range typ.NumField() {
-		fields = append(fields, g.getFieldByIndex(fieldIndex))
-	}
-	return fields
-}
 
 type App struct {
 	m                    sync.Mutex
@@ -156,9 +47,7 @@ func NewApp() (*App, bool) {
 	app := &App{
 		mpvEvents: make(chan any),
 
-		globals: &Globals{
-			PlaybackTime: mpv.FormatDuration(0),
-		},
+		globals: NewGlobals(),
 		quitApp: make(chan struct{}),
 	}
 	app.server = newHttpServer(app)
@@ -325,22 +214,16 @@ func (app *App) handleEvent(event any) {
 
 	switch e := event.(type) {
 	case mpv.PropertyChange:
-		app.setMPVFieldValue(e.Name, e.Data)
+		app.setGlobalPropertyValue(e.Name, e.Data)
 
 	default:
 		slog.Error("handleEvent: unhandled event type", "eventType", e)
 	}
 }
 
-func (app *App) setMPVFieldValue(mpvName string, value any) {
-	field, ok := app.globals.GetFieldByMPVName(mpvName)
-	if !ok {
-		slog.Error("setMPVFieldValue: unknown property name", "property", mpvName)
-		return
-	}
-
-	if changed := app.globals.SetFieldValue(field, value); changed {
-		app.sendEvent(app.makeGlobalPropertyEvent(field.SerializedName, app.globals.FieldValue(field)))
+func (app *App) setGlobalPropertyValue(propertyName string, value json.RawMessage) {
+	if changed := app.globals.setValue(propertyName, value); changed {
+		app.sendEvent(app.makeGlobalPropertyEvent(propertyName, value))
 	}
 }
 
@@ -407,8 +290,8 @@ func (app *App) ConnectToMPV(timeout time.Duration) error {
 	}
 
 	if wantInit {
-		for _, field := range app.globals.Fields() {
-			app.mpv.ObserveProperty(field.MPVName)
+		for propertyName := range app.globals.properties {
+			app.mpv.ObserveProperty(propertyName)
 		}
 	}
 
@@ -440,8 +323,8 @@ func (app *App) StartupEvents() []any {
 		app.makeGlobalPropertyEvent("connected", app.mpv != nil),
 	}
 
-	for _, field := range app.globals.Fields() {
-		events = append(events, app.makeGlobalPropertyEvent(field.SerializedName, app.globals.FieldValue(field)))
+	for propertyName, value := range app.globals.properties {
+		events = append(events, app.makeGlobalPropertyEvent(propertyName, value))
 	}
 
 	events = append(events, app.makeGlobalPropertyEvent("ready", true))

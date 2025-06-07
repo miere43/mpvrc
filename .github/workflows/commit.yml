@@ -31,6 +31,10 @@ jobs:
       working-directory: .\front
       run: npm run build
 
+    - name: Test frontend
+      working-directory: .\front
+      run: npm run test
+
     - name: Set up Go
       uses: actions/setup-go@v4
       with:

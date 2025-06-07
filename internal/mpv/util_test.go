@@ -2,80 +2,21 @@ package mpv_test
 
 import (
 	"bytes"
-	"fmt"
 	"testing"
 
 	"github.com/miere43/mpvrc/internal/mpv"
+	"github.com/stretchr/testify/suite"
 )
 
-func TestPlaybackTimeToString(t *testing.T) {
-	for _, test := range []struct {
-		seconds float64
-		want    string
-	}{
-		{
-			seconds: 4.004000,
-			want:    "00:00:04",
-		},
-		{
-			seconds: 0,
-			want:    "00:00:00",
-		},
-		{
-			seconds: 1,
-			want:    "00:00:01",
-		},
-		{
-			seconds: 59,
-			want:    "00:00:59",
-		},
-		{
-			seconds: 60,
-			want:    "00:01:00",
-		},
-		{
-			seconds: 61,
-			want:    "00:01:01",
-		},
-		{
-			seconds: 3599,
-			want:    "00:59:59",
-		},
-		{
-			seconds: 3600,
-			want:    "01:00:00",
-		},
-		{
-			seconds: 3661,
-			want:    "01:01:01",
-		},
-		{
-			seconds: 86399,
-			want:    "23:59:59",
-		},
-		{
-			seconds: 86400,
-			want:    "24:00:00",
-		},
-		{
-			seconds: -1,
-			want:    "00:00:00",
-		},
-		{
-			seconds: 3723.7,
-			want:    "01:02:03",
-		},
-	} {
-		t.Run(fmt.Sprintf("%v seconds must convert to %v", test.seconds, test.want), func(t *testing.T) {
-			actual := mpv.FormatDuration(test.seconds)
-			if test.want != actual {
-				t.Errorf("got %v; want %v", actual, test.want)
-			}
-		})
-	}
+type utilSuite struct {
+	suite.Suite
 }
 
-func TestNextIPCMessage(t *testing.T) {
+func TestUtil(t *testing.T) {
+	suite.Run(t, new(utilSuite))
+}
+
+func (s *utilSuite) TestNextIPCMessage() {
 	for _, test := range []struct {
 		name          string
 		buffer        []byte
@@ -107,19 +48,19 @@ func TestNextIPCMessage(t *testing.T) {
 			wantMsg:       []byte("first"),
 		},
 	} {
-		t.Run(test.name, func(t *testing.T) {
+		s.Run(test.name, func() {
 			remaining, msg := mpv.NextIPCMessage(test.buffer)
 			if !bytes.Equal(remaining, test.wantRemaining) {
-				t.Errorf("remaining: got %s; want %s", remaining, test.wantRemaining)
+				s.Fail("remaining: got %s; want %s", remaining, test.wantRemaining)
 			}
 			if !bytes.Equal(msg, test.wantMsg) {
-				t.Errorf("msg: got %s; want %s", msg, test.wantMsg)
+				s.Fail("msg: got %s; want %s", msg, test.wantMsg)
 			}
 		})
 	}
 }
 
-func TestNextIPCMessageDrain(t *testing.T) {
+func (s *utilSuite) TestNextIPCMessageDrain() {
 	buffer := []byte("first\nsecond\nthird\n")
 	msgs := make([][]byte, 0)
 	for {
@@ -131,16 +72,12 @@ func TestNextIPCMessageDrain(t *testing.T) {
 		msgs = append(msgs, msg)
 	}
 
-	if len(buffer) != 0 {
-		t.Errorf("expect buffer to be empty; got %v", buffer)
-	}
-
-	if len(msgs) != 3 {
-		t.Fatalf("expect 3 results; got %v", len(msgs))
-	}
+	r := s.Require()
+	s.Empty(buffer)
+	r.Len(msgs, 3)
 	for i, want := range [][]byte{[]byte("first"), []byte("second"), []byte("third")} {
 		if !bytes.Equal(msgs[i], want) {
-			t.Errorf("at %d got %q; want %q", i, msgs[i], want)
+			s.Fail("at %d got %q; want %q", i, msgs[i], want)
 		}
 	}
 }

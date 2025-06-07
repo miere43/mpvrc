@@ -4,29 +4,27 @@ import (
 	"testing"
 
 	"github.com/miere43/mpvrc/internal/mpv"
+	"github.com/stretchr/testify/suite"
 )
 
-func TestParseEvent(t *testing.T) {
+type mpvSuite struct {
+	suite.Suite
+}
+
+func TestMpv(t *testing.T) {
+	suite.Run(t, new(mpvSuite))
+}
+
+func (s *mpvSuite) TestParseEvent() {
+	r := s.Require()
 	event, err := mpv.ParseEvent([]byte(`{"event":"property-change","id":1,"name":"playback-time"}`))
-	if err != nil {
-		t.Fatalf("want no error; got %v", err)
-	}
+	r.NoError(err)
 
 	change, ok := event.(mpv.PropertyChange)
-	if !ok {
-		t.Fatalf("want type %T, got %T", mpv.PropertyChange{}, event)
-	}
+	r.True(ok)
 
-	if change.Event() != "property-change" {
-		t.Errorf("want event type %q, got %q", "property-change", change.Event())
-	}
-	if change.Id != 1 {
-		t.Errorf("want id %d, got %d", 1, change.Id)
-	}
-	if change.Name != "playback-time" {
-		t.Errorf("want name %q, got %q", "playback-time", change.Name)
-	}
-	if change.Data != nil {
-		t.Errorf("want data %v, got %v", nil, change.Data)
-	}
+	s.Equal("property-change", change.Event())
+	s.Equal(1, change.Id)
+	s.Equal("playback-time", change.Name)
+	s.Nil(change.Data)
 }

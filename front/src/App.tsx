@@ -1,6 +1,7 @@
 import { createSignal, For, onCleanup, Setter, Show, type Component } from 'solid-js';
 
 import styles from './App.module.css';
+import { DurationInSeconds, formatDuration } from './duration';
 
 interface SetGlobalPropertyBackendEvent {
     event: 'set-global-property';
@@ -12,17 +13,17 @@ type BackendEvent = SetGlobalPropertyBackendEvent;
 
 const App: Component<{ root: HTMLElement }> = ({ root }) => {
     const [connected, setConnected] = createSignal(false);
-    const [playbackTime, setPlaybackTime] = createSignal('00:00:00');
-    const [duration, setDuration] = createSignal('00:00:00');
+    const [playbackTime, setPlaybackTime] = createSignal<DurationInSeconds | null>(null);
+    const [duration, setDuration] = createSignal<DurationInSeconds | null>(null);
     const [pause, setPause] = createSignal(false);
     const [volume, setVolume] = createSignal(100);
-    const [path, setPath] = createSignal('');
+    const [path, setPath] = createSignal<string | null>(null);
     const [speed, setSpeed] = createSignal(1);
     const [ready, setReady] = createSignal(false);
 
     const globalProperties = new Map<string, Setter<unknown>>([
         ['connected', setConnected as any],
-        ['playbackTime', setPlaybackTime],
+        ['playback-time', setPlaybackTime],
         ['duration', setDuration],
         ['pause', setPause],
         ['volume', setVolume],
@@ -75,15 +76,6 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
         });
     }
 
-    function formatDuration(seconds: number): string {
-        if (seconds < 0) {
-            return "00:00:00"
-        }
-        const hours = Math.floor(Math.floor(seconds) / 3600);
-        const minutes = Math.floor((Math.floor(seconds) % 3600) / 60)
-        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${(Math.floor(seconds) % 60).toString().padStart(2, '0')}`;
-    }
-
     async function seek(change: number): Promise<void> {
         await command(['seek', change, 'relative+exact']);
         const playbackTimeResponse = await command(['get_property', 'playback-time']);
@@ -132,7 +124,7 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
     let filePicker: HTMLDialogElement | undefined;
 
     async function openFilePicker(): Promise<void> {
-        const response = await fetch(`/file-system?path=${encodeURIComponent(path())}&dir=true`);
+        const response = await fetch(`/file-system?path=${encodeURIComponent(path() ?? '')}&dir=true`);
         const data = (await response.json()) as FileSystemResponse;
 
         setFilePickerPath(data.path);
@@ -237,7 +229,7 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
                     </dialog>
 
                     <Show when={path()}>
-                        <div>Current playback time: {playbackTime()} / {duration()}</div>
+                        <div>Current playback time: {formatDuration(playbackTime())} / {formatDuration(duration())}</div>
                     </Show>
 
                     <div>Volume: {volume()}% | Speed: {speed()}</div>
