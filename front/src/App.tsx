@@ -1,7 +1,7 @@
 import { createSignal, For, onCleanup, Setter, Show, type Component } from 'solid-js';
 
 import styles from './App.module.css';
-import { DurationInSeconds, formatDuration } from './duration';
+import { DurationInSeconds, formatDuration, formatTrack, Track } from './mpv';
 
 interface SetGlobalPropertyBackendEvent {
     event: 'set-global-property';
@@ -10,17 +10,6 @@ interface SetGlobalPropertyBackendEvent {
 }
 
 type BackendEvent = SetGlobalPropertyBackendEvent;
-
-interface Track {
-    id: number;
-    type: 'sub';
-    title: string;
-    lang: string;
-    codec: string;
-    selected: boolean;
-    default: boolean;
-    forced: boolean;
-}
 
 const App: Component<{ root: HTMLElement }> = ({ root }) => {
     const [connected, setConnected] = createSignal(false);
@@ -34,22 +23,15 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
     const [trackList, setTrackList] = createSignal<Track[] | null>(null);
 
     function selectedSubtitleTrackFromTrackList(trackList: Track[] | null): string {
-        const track = trackList?.find(track => track.type === 'sub' && track.selected);
-        if (!track) {
-            return 'no';
-        }
-        const props: string[] = [];
-        if (track.default) {
-            props.push('default');
-        }
-        if (track.forced) {
-            props.push('forced');
-        }
-        const result = `(${track.id}) '${track.title}' (${track.lang} ${track.codec})`
-        return props.length > 0 ? `${result} [${props.join(' ')}]` : result;
+        return formatTrack(trackList?.find(track => track.type === 'sub' && track.selected));
+    }
+
+    function selectedAudioTrackFromTrackList(trackList: Track[] | null): string {
+        return formatTrack(trackList?.find(track => track.type === 'audio' && track.selected));
     }
 
     const selectedSubtitleTrack = (): string => selectedSubtitleTrackFromTrackList(trackList());
+    const selectedAudioTrack = (): string => selectedAudioTrackFromTrackList(trackList());
 
     const globalProperties = new Map<string, Setter<unknown>>([
         ['connected', setConnected as any],
@@ -184,6 +166,13 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
         await command(['show-text', `Subtitles: ${selectedSubtitleTrackFromTrackList(trackList)}`]);
     }
 
+    async function cycleAudioTrack(): Promise<void> {
+        await command(['cycle', 'audio']);
+        const response = await command(['get_property', 'track-list']);
+        const trackList: Track[] | null = await response.json();
+        await command(['show-text', `Audio: ${selectedAudioTrackFromTrackList(trackList)}`]);
+    }
+
     return (
         <Show when={ready()}>
             <Show
@@ -268,6 +257,13 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
 
                     <Show when={path()}>
                         <div>Current playback time: {formatDuration(playbackTime())} / {formatDuration(duration())}</div>
+                        <div>
+                            Audio: <div
+                                role="button"
+                                class={styles.link}
+                                onClick={event => { event.preventDefault(); cycleAudioTrack(); }}
+                            >{selectedAudioTrack()}</div>
+                        </div>
                         <div>
                             Subtitles: <div
                                 role="button"

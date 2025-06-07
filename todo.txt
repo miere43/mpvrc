@@ -1,5 +1,4 @@
 - switch audio output device
-- switch audio track
 - move fullscreen button to top right
 - remove C:\soft\mpv\mpv.exe hardcoded path
 - seek to chapter marker
