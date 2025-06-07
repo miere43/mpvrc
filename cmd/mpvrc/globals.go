@@ -19,6 +19,7 @@ func NewGlobals() *Globals {
 			"volume":        json.RawMessage("100.000000"),
 			"path":          null,
 			"speed":         json.RawMessage("1.000000"),
+			"track-list":    null,
 		},
 	}
 }

@@ -11,6 +11,17 @@ interface SetGlobalPropertyBackendEvent {
 
 type BackendEvent = SetGlobalPropertyBackendEvent;
 
+interface Track {
+    id: number;
+    type: 'sub';
+    title: string;
+    lang: string;
+    codec: string;
+    selected: boolean;
+    default: boolean;
+    forced: boolean;
+}
+
 const App: Component<{ root: HTMLElement }> = ({ root }) => {
     const [connected, setConnected] = createSignal(false);
     const [playbackTime, setPlaybackTime] = createSignal<DurationInSeconds | null>(null);
@@ -20,6 +31,25 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
     const [path, setPath] = createSignal<string | null>(null);
     const [speed, setSpeed] = createSignal(1);
     const [ready, setReady] = createSignal(false);
+    const [trackList, setTrackList] = createSignal<Track[] | null>(null);
+
+    function selectedSubtitleTrackFromTrackList(trackList: Track[] | null): string {
+        const track = trackList?.find(track => track.type === 'sub' && track.selected);
+        if (!track) {
+            return 'no';
+        }
+        const props: string[] = [];
+        if (track.default) {
+            props.push('default');
+        }
+        if (track.forced) {
+            props.push('forced');
+        }
+        const result = `(${track.id}) '${track.title}' (${track.lang} ${track.codec})`
+        return props.length > 0 ? `${result} [${props.join(' ')}]` : result;
+    }
+
+    const selectedSubtitleTrack = (): string => selectedSubtitleTrackFromTrackList(trackList());
 
     const globalProperties = new Map<string, Setter<unknown>>([
         ['connected', setConnected as any],
@@ -30,6 +60,7 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
         ['path', setPath],
         ['speed', setSpeed],
         ['ready', setReady],
+        ['track-list', setTrackList]
     ]);
 
     function setGlobalProperty(propertyName: string, value: any): void {
@@ -146,6 +177,13 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
         }
     };
 
+    async function cycleSubtitleTrack(): Promise<void> {
+        await command(['cycle', 'sub']);
+        const response = await command(['get_property', 'track-list']);
+        const trackList: Track[] | null = await response.json();
+        await command(['show-text', `Subtitles: ${selectedSubtitleTrackFromTrackList(trackList)}`]);
+    }
+
     return (
         <Show when={ready()}>
             <Show
@@ -230,6 +268,13 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
 
                     <Show when={path()}>
                         <div>Current playback time: {formatDuration(playbackTime())} / {formatDuration(duration())}</div>
+                        <div>
+                            Subtitles: <div
+                                role="button"
+                                class={styles.link}
+                                onClick={event => { event.preventDefault(); cycleSubtitleTrack(); }}
+                            >{selectedSubtitleTrack()}</div>
+                        </div>
                     </Show>
 
                     <div>Volume: {volume()}% | Speed: {speed()}</div>

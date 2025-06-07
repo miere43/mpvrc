@@ -37,4 +37,5 @@
     color: #c7cbff;
     cursor: pointer;
     display: inline;
+    user-select: none;
 }
