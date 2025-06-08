@@ -38,4 +38,5 @@
     cursor: pointer;
     display: inline;
     user-select: none;
+    overflow-wrap: break-word;
 }

@@ -77,6 +77,7 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
 
     onCleanup(() => {
         eventSource.close();
+        document.removeEventListener('fullscreenchange', onFullscreenChange);
     });
 
     function command(args: any[]): Promise<Response> {
@@ -109,14 +110,18 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
         await command(['show-text', `Speed: ${newSpeed}`]);
     };
 
+    function onFullscreenChange(e: Event): void {
+        setInFullscreen(!!document.fullscreenElement);
+    }
+
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+
     const [inFullscreen, setInFullscreen] = createSignal(false);
     async function toggleFullscreen(): Promise<void> {
         if (inFullscreen()) {
             await document.exitFullscreen();
-            setInFullscreen(false);
         } else {
             await root.requestFullscreen({ navigationUI: 'hide' });
-            setInFullscreen(true);
         }
     };
 
