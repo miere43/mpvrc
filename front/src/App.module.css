@@ -4,6 +4,7 @@
     align-items: center;
     justify-content: center;
     flex-direction: column;
+    text-align: center;
     width: 100%;
 }
 
@@ -31,6 +32,20 @@
 
 .controls > button {
     font-size: 30px;
+}
+
+.topControls {
+    align-self: flex-end;
+    margin: 0.5em;
+}
+
+.iconButton {
+    width: 32px;
+    height: 32px;
+}
+
+.iconButton > svg {
+    fill: #fff;
 }
 
 .link {

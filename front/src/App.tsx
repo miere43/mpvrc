@@ -192,7 +192,38 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
                     </div>
                 }
             >
+                <svg style="display: none" xmlns="http://www.w3.org/2000/svg">
+                    {/* Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2025 Fonticons, Inc. */}
+                    <defs>
+                        <symbol id="compress" viewBox="0 0 448 512">
+                            <path style="fill: #fff" d="M160 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 320c-17.7 0-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-96 0z"/>
+                        </symbol>
+                        <symbol id="expand" viewBox="0 0 448 512">
+                            <path style="fill: #fff" d="M32 32C14.3 32 0 46.3 0 64l0 96c0 17.7 14.3 32 32 32s32-14.3 32-32l0-64 64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L32 32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7 14.3 32 32 32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0 0-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32l64 0 0 64c0 17.7 14.3 32 32 32s32-14.3 32-32l0-96c0-17.7-14.3-32-32-32l-96 0zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64-64 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l96 0c17.7 0 32-14.3 32-32l0-96z"/>
+                        </symbol>
+                    </defs>
+                    <use href="#collapse"/>
+                    <use href="#expand"/>
+                </svg>
+
                 <div class={styles.display}>
+                    <div class={styles.topControls}>
+                        <div
+                            role="button"
+                            class={styles.iconButton}
+                            onClick={() => toggleFullscreen()}
+                        >
+                            <Show
+                                when={inFullscreen()}
+                                fallback={
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><use href="#expand"></use></svg>
+                                }
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><use href="#compress"></use></svg>
+                            </Show>
+                        </div>
+                    </div>
+
                     <div class={styles.controls}>
                         <button
                             type="button"
@@ -228,12 +259,7 @@ const App: Component<{ root: HTMLElement }> = ({ root }) => {
                             onClick={() => changeSpeed(-0.1)}
                         >-0.1s</button>
 
-                        <button
-                            type="button"
-                            onClick={() => toggleFullscreen()}
-                        >
-                            {inFullscreen() ? 'Exit FS' : 'Enter FS'}
-                        </button>
+                        <div></div>
 
                         <button
                             type="button"
