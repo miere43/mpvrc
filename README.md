@@ -21,7 +21,7 @@ Browser-based remote control application for [mpv](https://mpv.io/) for Windows.
 1. Compile executable:
 
 ```powershell
-.\make.ps1 build-release
+.\make.ps1 dist
 ```
 
 2. Use `mpvrc.exe` to open media files. It will launch HTTP server for remote control and `mpv`:

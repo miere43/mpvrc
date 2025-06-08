@@ -1,6 +1,6 @@
 param(
     [Parameter(Position=0)]
-    [ValidateSet("build", "run", "build-release", "test")]
+    [ValidateSet("build", "run", "build-release", "test", "dist")]
     [string]$Task = "run"
 )
 
@@ -40,9 +40,20 @@ function Build-Release {
     Error-Check "build release executable failed."
 }
 
+function Build-Release-Front {
+    npm run build --prefix=.\front
+    Error-Check "build front failed."
+}
+
+function Dist {
+    Build-Release-Front
+    Build-Release
+}
+
 switch ($Task) {
     "build" { Build }
     "run" { Run }
     "build-release" { Build-Release }
     "test" { Test }
+    "dist" { Dist }
 }
